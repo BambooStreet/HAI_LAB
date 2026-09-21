@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>HAI LAB Admin</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔧</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/common.css" />
+  <style>
+    main { max-width: 880px; margin: 0 auto; padding: 32px 20px 120px; }
+    h1 { font-size: 1.6rem; font-weight: 900; margin-bottom: 20px; }
+    h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 14px; }
+
+    .btn {
+      padding: 8px 16px; border-radius: 10px; border: 1px solid var(--line);
+      background: var(--surface-2); font-size: 0.9rem; white-space: nowrap;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+    .btn.primary:hover { filter: brightness(1.1); }
+    .btn.danger { color: var(--danger); }
+    .btn.danger:hover { border-color: var(--danger); }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .btn.icon { padding: 6px 10px; }
+
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 14px; }
+    label > span { display: block; margin-bottom: 6px; }
+    input, textarea {
+      width: 100%; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid var(--line); background: var(--bg); color: var(--text);
+      font: inherit; font-size: 0.95rem;
+    }
+    input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
+    textarea.tall { min-height: 320px; }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: -8px; margin-bottom: 14px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+
+    /* Login */
+    .login { max-width: 360px; margin: 12vh auto 0; text-align: center; }
+    .login p { color: var(--muted); margin-bottom: 20px; }
+    .login form { display: grid; gap: 12px; }
+    .error { color: var(--danger); font-size: 0.9rem; min-height: 1.4em; }
+
+    .banner { padding: 12px 16px; border-radius: 12px; margin-bottom: 20px; font-size: 0.9rem; border: 1px solid var(--danger); color: var(--danger); }
+
+    .tabs { display: flex; gap: 6px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+    .tabs button {
+      background: none; border: none; padding: 10px 16px; color: var(--muted);
+      border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500;
+    }
+    .tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* Papers */
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .toolbar .count { color: var(--muted); font-size: 0.9rem; }
+    .post-list { list-style: none; display: grid; gap: 8px; }
+    .post {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px;
+    }
+    .post .info { flex: 1; min-width: 0; }
+    .post .title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .post .meta { color: var(--muted); font-size: 0.85rem; }
+    .post .actions { display: flex; gap: 6px; }
+    .empty { color: var(--muted); text-align: center; padding: 32px; border: 1px dashed var(--line); border-radius: 12px; }
+    .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+    /* Repeatable rows */
+    .rows { display: grid; gap: 10px; margin-bottom: 12px; }
+    .row { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 14px 0; }
+    .row-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .row-head b { font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+    .row-head .actions { display: flex; gap: 4px; }
+    .row-fields { display: grid; grid-template-columns: repeat(var(--cols, 2), 1fr); gap: 0 12px; }
+    .row-fields .wide { grid-column: 1 / -1; }
+
+    .savebar {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+      background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(8px);
+      border-top: 1px solid var(--line);
+    }
+    .savebar-inner { max-width: 880px; margin: 0 auto; padding: 12px 20px; display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+    .savebar .status { color: var(--muted); font-size: 0.9rem; margin-right: auto; }
+    .savebar .status.dirty { color: var(--accent); }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 84px; transform: translate(-50%, 20px); z-index: 20;
+      background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 999px; font-size: 0.9rem;
+      opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast.err { background: var(--danger); }
+
+    @media (max-width: 640px) {
+      .grid-2, .row-fields { grid-template-columns: 1fr; }
+      .post { flex-wrap: wrap; }
+      .post .actions { width: 100%; justify-content: flex-end; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a href="/" class="logo">HAI <span>LAB</span> <small style="color:var(--muted);font-weight:500;font-size:.8rem">admin</small></a>
+      <div class="nav-right">
+        <ul class="nav-links">
+          <li><a href="/" target="_blank" rel="noopener">사이트 보기 ↗</a></li>
+          <li><a href="#" id="logout" hidden>로그아웃</a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="login" id="login-view">
+      <h1>🔧 관리자 로그인</h1>
+      <p>HAI LAB 관리자 비밀번호를 입력하세요.</p>
+      <form id="login-form">
+        <input type="password" id="password" placeholder="비밀번호" autocomplete="current-password" required />
+        <button class="btn primary" type="submit">로그인</button>
+        <div class="error" id="login-error"></div>
+      </form>
+    </div>
+
+    <div id="app" hidden>
+      <div class="banner" id="db-warn" hidden>⚠️ 데이터베이스가 연결되지 않아 저장이 되지 않습니다. Vercel 프로젝트의 Storage 탭에서 Upstash Redis를 연결해 주세요.</div>
+
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="papers" aria-selected="true">📄 Papers</button>
+        <button role="tab" data-tab="content" aria-selected="false">🏠 홈페이지 내용</button>
+      </div>
+
+      <!-- Papers tab -->
+      <div id="tab-papers">
+        <form class="card" id="paper-form" hidden>
+          <h3 id="paper-form-title">새 글</h3>
+          <label><span>제목</span><input name="title" required maxlength="200" /></label>
+          <div class="grid-2">
+            <label><span>저자</span><input name="authors" maxlength="200" placeholder="홍석주, 조정인" /></label>
+            <label><span>날짜</span><input name="date" type="date" /></label>
+          </div>
+          <label><span>태그 (쉼표로 구분)</span><input name="tags" placeholder="오리, 예비연구" /></label>
+          <label><span>본문</span><textarea name="body" class="tall" maxlength="20000"></textarea></label>
+          <p class="hint">**굵게** 처럼 별표 두 개로 감싸면 굵은 글씨가 됩니다. 줄바꿈은 그대로 표시됩니다.</p>
+          <div class="form-actions">
+            <button class="btn" type="button" id="paper-cancel">취소</button>
+            <button class="btn primary" type="submit">저장</button>
+          </div>
+        </form>
+
+        <div class="toolbar">
+          <span class="count" id="paper-count"></span>
+          <button class="btn primary" type="button" id="paper-new">+ 새 글 쓰기</button>
+        </div>
+        <ul class="post-list" id="post-list"></ul>
+      </div>
+
+      <!-- Content tab -->
+      <div id="tab-content" hidden>
+        <form id="content-form" autocomplete="off"></form>
+      </div>
+    </div>
+  </main>
+
+  <div class="savebar" id="savebar" hidden>
+    <div class="savebar-inner">
+      <span class="status" id="save-status">변경사항 없음</span>
+      <button class="btn" type="button" id="content-reset">되돌리기</button>
+      <button class="btn primary" type="button" id="content-save">저장</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+
+  <script type="module">
+    import { esc } from '/assets/common.js';
+
+    const $ = (id) => document.getElementById(id);
+    const PW_KEY = 'hai-admin-pw';
+    let password = '';
+    let papers = [];
+    let content = null;       // working copy being edited
+    let savedContent = null;  // last saved copy
+    let dirty = false;
+    let editingId = null;
+
+    // ---------- helpers ----------
+    const clone = (o) => JSON.parse(JSON.stringify(o));
+    const today = () => new Date().toLocaleDateString('sv-SE');
+    const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+    let toastTimer;
+    function toast(msg, isError = false) {
+      const t = $('toast');
+      t.textContent = msg;
+      t.classList.toggle('err', isError);
+      t.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+    }
+
+    async function request(url, method, body) {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': encodeURIComponent(password) },
+        body: body ? JSON.stringify(body) : undefined,
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && url !== '/api/login') logout();
+      if (!res.ok) throw new Error(data.error || `오류가 발생했습니다 (${res.status})`);
+      return data;
+    }
+
+    // ---------- auth ----------
+    async function login(pw) {
+      password = pw;
+      const { db } = await request('/api/login', 'POST');
+      try { sessionStorage.setItem(PW_KEY, pw); } catch {}
+      $('db-warn').hidden = db;
+      const data = await request('/api/data', 'GET');
+      papers = data.papers;
+      savedContent = data.content;
+      content = clone(savedContent);
+      $('login-view').hidden = true;
+      $('app').hidden = false;
+      $('logout').hidden = false;
+      renderPapers();
+      renderContentForm();
+    }
+
+    function logout() {
+      try { sessionStorage.removeItem(PW_KEY); } catch {}
+      password = '';
+      location.reload();
+    }
+
+    $('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('login-error').textContent = '';
+      try {
+        await login($('password').value);
+      } catch (err) {
+        $('login-error').textContent = err.message;
+      }
+    });
+    $('logout').addEventListener('click', (e) => { e.preventDefault(); logout(); });
+
+    // ---------- tabs ----------
+    document.querySelector('.tabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-tab]');
+      if (!btn) return;
+      for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b === btn));
+      $('tab-papers').hidden = btn.dataset.tab !== 'papers';
+      $('tab-content').hidden = btn.dataset.tab !== 'content';
+      $('savebar').hidden = btn.dataset.tab !== 'content';
+    });
+
+    // ---------- papers ----------
+    const sortPapers = () => papers.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    function renderPapers() {
+      sortPapers();
+      $('paper-count').textContent = `총 ${papers.length}편`;
+      $('post-list').innerHTML = papers.length
+        ? papers.map((p) => `
+          <li class="post">
+            <div class="info">
+              <div class="title">${esc(p.title)}</div>
+              <div class="meta">${esc(p.date || '날짜 없음')} · ${esc(p.authors || '익명')}${p.tags.length ? ' · ' + p.tags.map((t) => '#' + esc(t)).join(' ') : ''}</div>
+            </div>
+            <div class="actions">
+              <a class="btn" href="/#paper-${encodeURIComponent(p.id)}" target="_blank" rel="noopener">보기</a>
+              <button class="btn" type="button" data-edit="${esc(p.id)}">수정</button>
+              <button class="btn danger" type="button" data-del="${esc(p.id)}">삭제</button>
+            </div>
+          </li>`).join('')
+        : '<li class="empty">아직 글이 없습니다. 첫 논문(?)을 써보세요.</li>';
+    }
+
+    function openPaperForm(p) {
+      editingId = p?.id ?? null;
+      const f = $('paper-form');
+      $('paper-form-title').textContent = p ? '글 수정' : '새 글';
+      f.title.value = p?.title ?? '';
+      f.authors.value = p?.authors ?? '';
+      f.date.value = p?.date ?? today();
+      f.tags.value = (p?.tags ?? []).join(', ');
+      f.body.value = p?.body ?? '';
+      f.hidden = false;
+      f.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      f.title.focus({ preventScroll: true });
+    }
+
+    function closePaperForm() {
+      $('paper-form').hidden = true;
+      editingId = null;
+    }
+
+    async function savePapers(next, message) {
+      await request('/api/data', 'PUT', { papers: next });
+      papers = next;
+      renderPapers();
+      toast(message);
+    }
+
+    $('paper-new').addEventListener('click', () => openPaperForm(null));
+    $('paper-cancel').addEventListener('click', closePaperForm);
+
+    $('paper-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const post = {
+        id: editingId || newId(),
+        title: f.title.value.trim(),
+        authors: f.authors.value.trim(),
+        date: f.date.value,
+        tags: f.tags.value.split(',').map((t) => t.trim()).filter(Boolean),
+        body: f.body.value,
+      };
+      const next = editingId ? papers.map((p) => (p.id === editingId ? post : p)) : [post, ...papers];
+      const submit = f.querySelector('[type=submit]');
+      submit.disabled = true;
+      try {
+        await savePapers(next, editingId ? '수정했습니다.' : '게시했습니다.');
+        closePaperForm();
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+
+    $('post-list').addEventListener('click', async (e) => {
+      const edit = e.target.closest('[data-edit]');
+      const del = e.target.closest('[data-del]');
+      if (edit) openPaperForm(papers.find((p) => p.id === edit.dataset.edit));
+      if (del) {
+        const p = papers.find((x) => x.id === del.dataset.del);
+        if (!p || !confirm(`"${p.title}" 글을 삭제할까요?`)) return;
+        try {
+          await savePapers(papers.filter((x) => x.id !== p.id), '삭제했습니다.');
+          if (editingId === p.id) closePaperForm();
+        } catch (err) {
+          toast(err.message, true);
+        }
+      }
+    });
+
+    // ---------- content form ----------
+    // Each input carries data-path (e.g. "members.0.name"); edits write straight into `content`.
+    const getPath = (obj, path) => path.split('.').reduce((o, k) => o?.[k], obj);
+    function setPath(obj, path, value) {
+      const keys = path.split('.');
+      const last = keys.pop();
+      keys.reduce((o, k) => o[k], obj)[last] = value;
+    }
+
+    function input(label, path, opts = {}) {
+      const value = opts.csv ? (getPath(content, path) || []).join(', ') : getPath(content, path) ?? '';
+      const attrs = `data-path="${path}"${opts.csv ? ' data-csv' : ''} placeholder="${esc(opts.placeholder || '')}"`;
+      const control = opts.textarea
+        ? `<textarea ${attrs} rows="${opts.rows || 3}">${esc(value)}</textarea>`
+        : `<input ${attrs} value="${esc(value)}" />`;
+      return `<label class="${opts.wide ? 'wide' : ''}"><span>${label}</span>${control}</label>`;
+    }
+
+    // A repeatable list of objects (members, contact rows...).
+    const LISTS = {
+      'professor.items': { title: '항목', cols: 2, blank: { label: '', value: '' },
+        fields: [['라벨', 'label'], ['내용', 'value']] },
+      members: { title: '멤버', cols: 2, blank: { emoji: '🐾', name: '', pos: '', desc: '', photo: '' },
+        fields: [['이름', 'name'], ['과정 / 직책', 'pos'], ['연구 주제', 'desc', { wide: true }], ['이모지', 'emoji'], ['사진 URL (선택, 있으면 이모지 대신 표시)', 'photo', { placeholder: 'https://…' }]] },
+      contact: { title: '연락처', cols: 2, blank: { label: '', value: '', href: '' },
+        fields: [['라벨', 'label'], ['링크 (선택)', 'href', { placeholder: 'mailto:… 또는 https://…' }], ['내용', 'value', { wide: true, textarea: true, rows: 2 }]] },
+    };
+
+    function list(path) {
+      const def = LISTS[path];
+      const items = getPath(content, path);
+      const rows = items.map((item, i) => `
+        <div class="row">
+          <div class="row-head">
+            <b>${def.title} ${i + 1}${item.name ? ' · ' + esc(item.name) : ''}</b>
+            <div class="actions">
+              <button class="btn icon" type="button" data-list="${path}" data-act="up" data-i="${i}" ${i === 0 ? 'disabled' : ''} aria-label="위로">↑</button>
+              <button class="btn icon" type="button" data-list="${path}" data-act="down" data-i="${i}" ${i === items.length - 1 ? 'disabled' : ''} aria-label="아래로">↓</button>
+              <button class="btn icon danger" type="button" data-list="${path}" data-act="del" data-i="${i}" aria-label="삭제">✕</button>
+            </div>
+          </div>
+          <div class="row-fields" style="--cols:${def.cols}">
+            ${def.fields.map(([label, key, opts]) => input(label, `${path}.${i}.${key}`, opts)).join('')}
+          </div>
+        </div>`).join('');
+      return `<div class="rows">${rows}</div>
+        <button class="btn" type="button" data-list="${path}" data-act="add">+ ${def.title} 추가</button>`;
+    }
+
+    function renderContentForm() {
+      const scroll = window.scrollY;
+      $('content-form').innerHTML = `
+        <div class="card">
+          <h3>🌊 상단 배너</h3>
+          ${input('부제목', 'hero.subtitle')}
+          ${input('동물 이모지 (띄어쓰기로 구분)', 'hero.critters')}
+        </div>
+        <div class="card">
+          <h3>👋 환영글</h3>
+          ${input('제목', 'welcome.title')}
+          ${input('본문', 'welcome.body', { textarea: true, rows: 8 })}
+          <p class="hint">빈 줄로 문단을 나누고, **굵게** 처럼 쓰면 강조됩니다.</p>
+          ${input('키워드 (쉼표로 구분)', 'welcome.keywords', { csv: true })}
+        </div>
+        <div class="card">
+          <h3>🧑‍🏫 지도교수</h3>
+          <div class="grid-2">
+            ${input('이름', 'professor.name')}
+            ${input('직함', 'professor.role')}
+            ${input('이모지', 'professor.emoji')}
+            ${input('사진 URL (선택)', 'professor.photo', { placeholder: 'https://…' })}
+          </div>
+          ${list('professor.items')}
+        </div>
+        <div class="card">
+          <h3>👥 Members</h3>
+          ${list('members')}
+        </div>
+        <div class="card">
+          <h3>📮 Contact</h3>
+          ${list('contact')}
+        </div>
+        <div class="card">
+          <h3>🦶 Footer</h3>
+          ${input('하단 문구', 'footer')}
+        </div>`;
+      window.scrollTo(0, scroll);
+    }
+
+    function setDirty(value) {
+      dirty = value;
+      const s = $('save-status');
+      s.textContent = dirty ? '● 저장하지 않은 변경사항이 있습니다' : '변경사항 없음';
+      s.classList.toggle('dirty', dirty);
+    }
+
+    $('content-form').addEventListener('input', (e) => {
+      const el = e.target;
+      if (!el.dataset.path) return;
+      const value = 'csv' in el.dataset ? el.value.split(',').map((s) => s.trim()).filter(Boolean) : el.value;
+      setPath(content, el.dataset.path, value);
+      setDirty(true);
+    });
+
+    $('content-form').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const items = getPath(content, btn.dataset.list);
+      const i = Number(btn.dataset.i);
+      switch (btn.dataset.act) {
+        case 'add': items.push(clone(LISTS[btn.dataset.list].blank)); break;
+        case 'del': if (!confirm('이 항목을 삭제할까요?')) return; items.splice(i, 1); break;
+        case 'up': [items[i - 1], items[i]] = [items[i], items[i - 1]]; break;
+        case 'down': [items[i + 1], items[i]] = [items[i], items[i + 1]]; break;
+      }
+      setDirty(true);
+      renderContentForm();
+    });
+
+    $('content-save').addEventListener('click', async () => {
+      const btn = $('content-save');
+      btn.disabled = true;
+      try {
+        await request('/api/data', 'PUT', { content });
+        savedContent = clone(content);
+        setDirty(false);
+        toast('저장했습니다. 사이트에 바로 반영됩니다.');
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('content-reset').addEventListener('click', () => {
+      if (!dirty || !confirm('저장하지 않은 변경사항을 모두 되돌릴까요?')) return;
+      content = clone(savedContent);
+      setDirty(false);
+      renderContentForm();
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (dirty) e.preventDefault();
+    });
+
+    // ---------- boot ----------
+    let stored = '';
+    try { stored = sessionStorage.getItem(PW_KEY) || ''; } catch {}
+    if (stored) login(stored).catch(() => { try { sessionStorage.removeItem(PW_KEY); } catch {} });
+  </script>
+</body>
+</html>

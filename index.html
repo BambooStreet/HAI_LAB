@@ -9,57 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/common.css" />
   <style>
-    :root {
-      --bg: #f7faf8;
-      --surface: #ffffff;
-      --text: #1d2b27;
-      --muted: #5b6b66;
-      --line: #dfe8e4;
-      --accent: #1f7a6b;
-      --accent-soft: #e3f2ee;
-      --water: #3a8fb7;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0f1614;
-        --surface: #16201d;
-        --text: #e6efec;
-        --muted: #9aaca6;
-        --line: #26332f;
-        --accent: #5cc2ae;
-        --accent-soft: #1b2e29;
-        --water: #6bb6d8;
-      }
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html { scroll-behavior: smooth; }
-    body {
-      font-family: "Noto Sans KR", system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.7;
-    }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-
-    /* Nav */
-    nav {
-      position: sticky; top: 0; z-index: 10;
-      background: color-mix(in srgb, var(--bg) 85%, transparent);
-      backdrop-filter: blur(8px);
-      border-bottom: 1px solid var(--line);
-    }
-    .nav-inner {
-      max-width: 960px; margin: 0 auto; padding: 14px 20px;
-      display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    }
-    .logo { font-weight: 900; font-size: 1.2rem; letter-spacing: 0.04em; color: var(--text); }
-    .logo span { color: var(--accent); }
-    .nav-links { display: flex; gap: 20px; list-style: none; font-size: 0.95rem; }
-    .nav-links a { color: var(--muted); }
-    .nav-links a:hover { color: var(--accent); text-decoration: none; }
-
     /* Hero */
     .hero {
       position: relative; overflow: hidden;
@@ -68,13 +19,9 @@
     }
     .hero .eyebrow { color: var(--accent); font-weight: 700; letter-spacing: 0.15em; font-size: 0.85rem; }
     .hero h1 { font-size: clamp(2.8rem, 9vw, 5.5rem); font-weight: 900; letter-spacing: 0.02em; margin: 8px 0 4px; }
-    .hero p { color: var(--muted); font-size: 1.05rem; }
-    .critters { font-size: 2rem; margin-top: 28px; letter-spacing: 0.3em; }
+    .hero p { color: var(--muted); font-size: 1.05rem; min-height: 1.7em; }
+    .critters { font-size: 2rem; margin-top: 28px; letter-spacing: 0.3em; min-height: 3rem; }
     .critters span { display: inline-block; animation: bob 3s ease-in-out infinite; }
-    .critters span:nth-child(2) { animation-delay: .4s; }
-    .critters span:nth-child(3) { animation-delay: .8s; }
-    .critters span:nth-child(4) { animation-delay: 1.2s; }
-    .critters span:nth-child(5) { animation-delay: 1.6s; }
     @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
     .waves { position: absolute; bottom: 0; left: 0; width: 200%; height: 80px; animation: flow 14s linear infinite; }
     .waves path { fill: var(--water); opacity: 0.18; }
@@ -89,11 +36,13 @@
     section + section { border-top: 1px solid var(--line); }
     .section-label { color: var(--accent); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.15em; text-transform: uppercase; }
     h2 { font-size: 2rem; font-weight: 900; margin: 4px 0 28px; }
+    .section-desc { color: var(--muted); margin: -16px 0 28px; }
+    .notice { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--line); border-radius: 16px; }
 
-    .welcome p { font-size: 1.1rem; margin-bottom: 16px; max-width: 680px; }
-    .welcome strong { color: var(--accent); }
+    .welcome-body p { font-size: 1.1rem; margin-bottom: 16px; max-width: 680px; }
+    .welcome-body strong { color: var(--accent); }
     .keywords { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
-    .keywords span {
+    .chip {
       background: var(--accent-soft); color: var(--accent);
       padding: 6px 14px; border-radius: 999px; font-size: 0.9rem; font-weight: 500;
     }
@@ -104,9 +53,10 @@
       background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px;
     }
     .avatar {
-      width: 100%; aspect-ratio: 1; border-radius: 16px;
+      width: 100%; aspect-ratio: 1; border-radius: 16px; overflow: hidden;
       background: var(--accent-soft); display: grid; place-items: center; font-size: 5rem;
     }
+    .avatar img, .member .photo img { width: 100%; height: 100%; object-fit: cover; }
     .prof h3 { font-size: 1.6rem; font-weight: 900; }
     .prof .role { color: var(--muted); margin-bottom: 16px; }
     .prof ul { list-style: none; }
@@ -121,9 +71,52 @@
     }
     .member:hover { transform: translateY(-4px); border-color: var(--accent); }
     .member .emoji { font-size: 2.6rem; }
+    .member .photo { width: 88px; height: 88px; margin: 0 auto; border-radius: 50%; overflow: hidden; }
     .member h4 { font-size: 1.1rem; margin-top: 8px; }
     .member .pos { color: var(--accent); font-size: 0.85rem; font-weight: 700; }
     .member p { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
+
+    /* Papers */
+    .paper-list { list-style: none; display: grid; gap: 12px; }
+    .paper {
+      width: 100%; text-align: left; display: block;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+      padding: 18px 22px; transition: border-color .2s, transform .2s;
+    }
+    .paper:hover { border-color: var(--accent); transform: translateX(4px); }
+    .paper-top { display: flex; gap: 12px; align-items: baseline; }
+    .paper-no { color: var(--accent); font-weight: 700; font-size: 0.9rem; flex: none; }
+    .paper-title { font-weight: 700; font-size: 1.05rem; }
+    .paper-meta { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+    .paper-meta i { color: var(--text); opacity: .8; }
+    .paper .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .paper .chip, dialog .chip { font-size: 0.78rem; padding: 3px 10px; }
+    .more {
+      display: block; margin: 20px auto 0; padding: 10px 24px; border-radius: 999px;
+      background: transparent; border: 1px solid var(--line); color: var(--muted);
+    }
+    .more:hover { border-color: var(--accent); color: var(--accent); }
+    .more[hidden] { display: none; }
+
+    dialog {
+      width: min(720px, calc(100% - 32px)); max-height: calc(100% - 64px);
+      margin: auto; padding: 0; border: 1px solid var(--line); border-radius: 20px;
+      background: var(--surface); color: var(--text);
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, .6); backdrop-filter: blur(3px); }
+    .dialog-head {
+      position: sticky; top: 0; background: var(--surface);
+      padding: 28px 32px 16px; border-bottom: 1px solid var(--line);
+    }
+    .dialog-head h3 { font-size: 1.4rem; font-weight: 900; line-height: 1.4; padding-right: 40px; }
+    .dialog-head .paper-meta { margin-top: 8px; }
+    .dialog-head .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .dialog-close {
+      position: absolute; top: 20px; right: 20px; width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid var(--line); background: var(--surface-2); font-size: 1rem;
+    }
+    .dialog-body { padding: 24px 32px 32px; white-space: pre-wrap; word-break: break-word; font-size: 1.02rem; }
+    .dialog-body strong { color: var(--accent); }
 
     /* Contact */
     .contact-box {
@@ -131,18 +124,22 @@
       display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px;
     }
     .contact-box h4 { font-size: 0.85rem; color: var(--muted); font-weight: 500; }
-    .contact-box p { font-size: 1.05rem; font-weight: 500; }
+    .contact-box p { font-size: 1.05rem; font-weight: 500; white-space: pre-line; }
 
     footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 40px 20px 60px; }
 
     @media (max-width: 640px) {
-      .nav-links { gap: 12px; font-size: 0.85rem; }
       .prof { grid-template-columns: 1fr; padding: 24px; }
       .avatar { max-width: 160px; }
       section { padding: 60px 16px; }
+      .dialog-head { padding: 24px 20px 14px; }
+      .dialog-body { padding: 20px 20px 28px; }
     }
-    @media (max-width: 420px) {
+    @media (max-width: 520px) {
       .nav-links li:first-child { display: none; }
+    }
+    @media (max-width: 400px) {
+      .nav-links li:nth-child(2) { display: none; }
     }
   </style>
 </head>
@@ -150,20 +147,23 @@
   <nav>
     <div class="nav-inner">
       <a href="#top" class="logo">HAI <span>LAB</span></a>
-      <ul class="nav-links">
-        <li><a href="#welcome">Welcome</a></li>
-        <li><a href="#professor">Professor</a></li>
-        <li><a href="#members">Members</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ul>
+      <div class="nav-right">
+        <ul class="nav-links">
+          <li><a href="#welcome">Welcome</a></li>
+          <li><a href="#professor">Professor</a></li>
+          <li><a href="#members">Members</a></li>
+          <li><a href="#papers">Papers</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </div>
     </div>
   </nav>
 
   <header class="hero" id="top">
     <div class="eyebrow">HUMAN · ANIMAL · INTERACTION</div>
     <h1>HAI LAB</h1>
-    <p>청계천의 동물들과 함께 호흡하는 연구실</p>
-    <div class="critters" aria-hidden="true"><span>🦆</span><span>🐟</span><span>🐦</span><span>🐢</span><span>🦢</span></div>
+    <p id="hero-subtitle"></p>
+    <div class="critters" id="critters" aria-hidden="true"></div>
     <svg class="waves" viewBox="0 0 2880 80" preserveAspectRatio="none" aria-hidden="true">
       <path d="M0 40 Q 180 0 360 40 T 720 40 T 1080 40 T 1440 40 T 1800 40 T 2160 40 T 2520 40 T 2880 40 V80 H0 Z" />
       <path d="M0 50 Q 240 20 480 50 T 960 50 T 1440 50 T 1920 50 T 2400 50 T 2880 50 V80 H0 Z" />
@@ -171,84 +171,163 @@
   </header>
 
   <main>
-    <section class="welcome" id="welcome">
+    <section id="welcome">
       <div class="section-label">Welcome</div>
-      <h2>환영합니다</h2>
-      <p>안녕하세요, 저희는 <strong>HAI(Human Animal Interaction) 연구실</strong>입니다.</p>
-      <p>HAI LAB은 서울 도심 한가운데를 흐르는 <strong>청계천</strong>과 그곳에 터를 잡고 살아가는 동물들을 연구합니다.
-        물가를 거니는 왜가리, 여유롭게 떠다니는 청둥오리, 돌 틈을 누비는 물고기들까지 —
-        저희는 이들을 단순히 관찰하는 데 그치지 않고, 사람과 동물 사이의 <strong>교감</strong>을 탐구합니다.</p>
-      <p>청계천을 걷다 오리와 눈이 마주쳤다면, 당신도 이미 HAI 연구에 한 발 들인 것입니다.</p>
-      <div class="keywords">
-        <span>#청계천</span><span>#도심생태</span><span>#교감</span><span>#오리관찰</span><span>#산책기반연구</span>
-      </div>
+      <h2 id="welcome-title">환영합니다</h2>
+      <div class="welcome-body" id="welcome-body"><p class="notice">불러오는 중…</p></div>
+      <div class="keywords" id="keywords"></div>
     </section>
 
     <section id="professor">
       <div class="section-label">Professor</div>
       <h2>지도교수</h2>
-      <div class="prof">
-        <div class="avatar" aria-hidden="true">🧑‍🏫</div>
-        <div>
-          <h3>조정인 교수</h3>
-          <div class="role">Principal Investigator, HAI LAB</div>
-          <ul>
-            <li><b>연구분야</b>청계천 동물 행동학, 인간-동물 교감론</li>
-            <li><b>주요업적</b>청계천 오리와 3초 이상 눈 마주치기 성공</li>
-            <li><b>연구실</b>청계천 산책로 어딘가 (벤치 3번)</li>
-            <li><b>한마디</b>"동물은 말이 없지만, 다 알고 있습니다."</li>
-          </ul>
-        </div>
-      </div>
+      <div id="prof"></div>
     </section>
 
     <section id="members">
       <div class="section-label">Members</div>
       <h2>연구원</h2>
-      <div class="members">
-        <div class="member">
-          <div class="emoji">🦆</div>
-          <h4>홍석주</h4>
-          <div class="pos">석박사통합과정</div>
-          <p>청계천 돌바닥 간격 연구</p>
-        </div>
-        <div class="member">
-          <div class="emoji">🐟</div>
-          <h4>멤버 2</h4>
-          <div class="pos">석사과정</div>
-          <p>청계천 어류와의 비언어적 소통</p>
-        </div>
-        <div class="member">
-          <div class="emoji">🐦</div>
-          <h4>멤버 3</h4>
-          <div class="pos">학부연구생</div>
-          <p>왜가리의 사냥 집중력 관찰</p>
-        </div>
-      </div>
+      <div class="members" id="member-list"></div>
+    </section>
+
+    <section id="papers">
+      <div class="section-label">Papers</div>
+      <h2>논문</h2>
+      <p class="section-desc">HAI LAB의 빛나는 연구 성과 (라고 주장하는 글들)</p>
+      <ol class="paper-list" id="paper-list"></ol>
+      <button class="more" id="more-papers" type="button" hidden>더 보기</button>
     </section>
 
     <section id="contact">
       <div class="section-label">Contact</div>
       <h2>연락처</h2>
-      <div class="contact-box">
-        <div>
-          <h4>Email</h4>
-          <p><a href="mailto:hailab@example.com">hailab@example.com</a></p>
-        </div>
-        <div>
-          <h4>Location</h4>
-          <p>서울특별시 청계천 일대<br />(주로 광통교 ~ 오간수교 구간)</p>
-        </div>
-        <div>
-          <h4>Office Hours</h4>
-          <p>날씨 좋은 날, 오리가 나올 때</p>
-        </div>
-      </div>
+      <div class="contact-box" id="contact-box"></div>
     </section>
   </main>
 
-  <footer>
-    © 2026 HAI LAB · Human Animal Interaction Laboratory · 청계천의 모든 생명에게 감사를 🦆
-  </footer>
+  <footer id="footer"></footer>
+
+  <dialog id="paper-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-head">
+      <h3 id="dialog-title"></h3>
+      <div class="paper-meta" id="dialog-meta"></div>
+      <div class="tags" id="dialog-tags"></div>
+      <button class="dialog-close" id="dialog-close" type="button" aria-label="닫기">✕</button>
+    </div>
+    <div class="dialog-body" id="dialog-body"></div>
+  </dialog>
+
+  <script type="module">
+    import { esc, rich, safeUrl } from '/assets/common.js';
+
+    const $ = (id) => document.getElementById(id);
+    const PAGE_SIZE = 10;
+    let papers = [];
+    let shown = PAGE_SIZE;
+
+    const fmtDate = (d) => (d ? d.replaceAll('-', '.') : '');
+    const year = (d) => (d ? d.slice(0, 4) : 'n.d.');
+    const tagsHtml = (tags) => (tags || []).map((t) => `<span class="chip">#${esc(t)}</span>`).join('');
+    const photoOr = (photo, emoji) => {
+      const src = safeUrl(photo, ['http:', 'https:']);
+      return src ? `<img src="${esc(src)}" alt="" loading="lazy" />` : esc(emoji);
+    };
+
+    function renderContent(c) {
+      $('hero-subtitle').textContent = c.hero.subtitle;
+      $('critters').innerHTML = [...c.hero.critters.split(/\s+/).filter(Boolean)]
+        .map((e, i) => `<span style="animation-delay:${i * 0.4}s">${esc(e)}</span>`).join('');
+
+      $('welcome-title').textContent = c.welcome.title;
+      $('welcome-body').innerHTML = c.welcome.body.split(/\n\s*\n/).filter((p) => p.trim())
+        .map((p) => `<p>${rich(p.trim()).replace(/\n/g, '<br />')}</p>`).join('');
+      $('keywords').innerHTML = c.welcome.keywords.map((k) => `<span class="chip">#${esc(k)}</span>`).join('');
+
+      const p = c.professor;
+      $('prof').innerHTML = `
+        <div class="prof">
+          <div class="avatar" aria-hidden="true">${photoOr(p.photo, p.emoji)}</div>
+          <div>
+            <h3>${esc(p.name)}</h3>
+            <div class="role">${esc(p.role)}</div>
+            <ul>${p.items.map((i) => `<li><b>${esc(i.label)}</b>${esc(i.value)}</li>`).join('')}</ul>
+          </div>
+        </div>`;
+
+      $('member-list').innerHTML = c.members.map((m) => `
+        <div class="member">
+          ${safeUrl(m.photo, ['http:', 'https:']) ? `<div class="photo">${photoOr(m.photo)}</div>` : `<div class="emoji">${esc(m.emoji)}</div>`}
+          <h4>${esc(m.name)}</h4>
+          <div class="pos">${esc(m.pos)}</div>
+          <p>${esc(m.desc)}</p>
+        </div>`).join('') || '<p class="notice">아직 멤버가 없습니다.</p>';
+
+      $('contact-box').innerHTML = c.contact.map((x) => {
+        const href = safeUrl(x.href);
+        const value = href ? `<a href="${esc(href)}" target="${href.startsWith('http') ? '_blank' : '_self'}" rel="noopener">${esc(x.value)}</a>` : esc(x.value);
+        return `<div><h4>${esc(x.label)}</h4><p>${value}</p></div>`;
+      }).join('');
+
+      $('footer').textContent = c.footer;
+    }
+
+    function renderPapers() {
+      const list = $('paper-list');
+      if (!papers.length) {
+        list.innerHTML = '<li class="notice">아직 출판된 논문이 없습니다. 오리가 바빴나 봅니다.</li>';
+        $('more-papers').hidden = true;
+        return;
+      }
+      list.innerHTML = papers.slice(0, shown).map((p, i) => `
+        <li>
+          <button class="paper" type="button" data-id="${esc(p.id)}">
+            <div class="paper-top">
+              <span class="paper-no">[${papers.length - i}]</span>
+              <span class="paper-title">${esc(p.title)}</span>
+            </div>
+            <div class="paper-meta">${esc(p.authors || '익명')} (${esc(year(p.date))}). <i>HAI LAB Journal</i> · ${esc(fmtDate(p.date))}</div>
+            ${p.tags?.length ? `<div class="tags">${tagsHtml(p.tags)}</div>` : ''}
+          </button>
+        </li>`).join('');
+      $('more-papers').hidden = shown >= papers.length;
+    }
+
+    const dialog = $('paper-dialog');
+    function openPaper(id) {
+      const p = papers.find((x) => x.id === id);
+      if (!p) return;
+      $('dialog-title').textContent = p.title;
+      $('dialog-meta').innerHTML = `${esc(p.authors || '익명')} · ${esc(fmtDate(p.date))}`;
+      $('dialog-tags').innerHTML = tagsHtml(p.tags);
+      $('dialog-body').innerHTML = rich(p.body || '(본문 없음)');
+      history.replaceState(null, '', `#paper-${encodeURIComponent(id)}`);
+      if (!dialog.open) dialog.showModal();
+      dialog.scrollTop = 0;
+    }
+
+    $('paper-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('.paper');
+      if (btn) openPaper(btn.dataset.id);
+    });
+    $('more-papers').addEventListener('click', () => { shown += PAGE_SIZE; renderPapers(); });
+    $('dialog-close').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+    dialog.addEventListener('close', () => history.replaceState(null, '', '#papers'));
+
+    try {
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      renderContent(data.content);
+      papers = [...data.papers].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      renderPapers();
+      const m = location.hash.match(/^#paper-(.+)$/);
+      if (m) openPaper(decodeURIComponent(m[1]));
+      else if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
+    } catch (err) {
+      console.error(err);
+      $('welcome-body').innerHTML = '<p class="notice">내용을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>';
+    }
+  </script>
 </body>
 </html>
