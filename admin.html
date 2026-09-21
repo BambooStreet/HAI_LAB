@@ -167,6 +167,7 @@
 
     <div id="app" hidden>
       <div class="banner" id="db-warn" hidden>⚠️ 데이터베이스가 연결되지 않아 저장이 되지 않습니다. Vercel 프로젝트의 Storage 탭에서 Neon 데이터베이스를 연결해 주세요.</div>
+      <div class="banner" id="blob-warn" hidden>⚠️ 사진 저장소(Blob)가 연결되지 않아 사진을 올릴 수 없습니다. Vercel 프로젝트의 Storage 탭에서 Blob을 연결하고 Redeploy 해 주세요.</div>
 
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="content" aria-selected="true">🏠 홈페이지 내용</button>
@@ -313,7 +314,8 @@
     // ---------- auth ----------
     async function login(pw) {
       password = pw;
-      const { db, passwordRequired } = await request('/api/login', 'POST');
+      const { db, blob, passwordRequired } = await request('/api/login', 'POST');
+      $('blob-warn').hidden = blob;
       if (passwordRequired) try { sessionStorage.setItem(PW_KEY, pw); } catch {}
       $('db-warn').hidden = db;
       const data = await request('/api/data', 'GET');
