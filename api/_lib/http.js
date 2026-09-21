@@ -7,11 +7,15 @@ export function send(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+export const passwordRequired = () => Boolean(process.env.ADMIN_PASSWORD);
+
+// With no ADMIN_PASSWORD set, editing is open to anyone.
 // The client URI-encodes the password so non-ASCII (e.g. Korean) survives the header.
 export function isAdmin(req) {
   const expected = process.env.ADMIN_PASSWORD;
+  if (!expected) return true;
   const raw = req.headers['x-admin-password'];
-  if (!expected || typeof raw !== 'string') return false;
+  if (typeof raw !== 'string') return false;
   let given;
   try {
     given = decodeURIComponent(raw);

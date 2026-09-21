@@ -1,6 +1,6 @@
 // Local preview without the Vercel CLI: serves static files (with clean URLs) and /api/* handlers.
 // Data is kept in memory unless KV_REST_API_URL / KV_REST_API_TOKEN are set.
-// Usage: ADMIN_PASSWORD=test npm run dev
+// Usage: npm run dev   (set ADMIN_PASSWORD=... to require a password for /admin)
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -8,7 +8,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const port = Number(process.env.PORT) || 3000;
-process.env.ADMIN_PASSWORD ||= 'admin';
 
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
 
@@ -43,5 +42,5 @@ http.createServer(async (req, res) => {
   res.statusCode = 404;
   res.end('Not found');
 }).listen(port, () => {
-  console.log(`HAI LAB dev server: http://localhost:${port}  (admin password: ${process.env.ADMIN_PASSWORD})`);
+  console.log(`HAI LAB dev server: http://localhost:${port}  (/admin password: ${process.env.ADMIN_PASSWORD ? 'set' : 'none'})`);
 });
