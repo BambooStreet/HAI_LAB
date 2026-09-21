@@ -20,3 +20,15 @@ export function safeUrl(url, schemes = ['http:', 'https:', 'mailto:', 'tel:']) {
   }
 }
 
+
+// Paper body: **bold** plus ![caption](https://...) images.
+const IMAGE_RE = /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)/g;
+
+export function renderBody(text) {
+  return rich(text).replace(IMAGE_RE, (_, alt, url) => `<img class="body-img" src="${url}" alt="${alt}" loading="lazy" />`);
+}
+
+export function firstImage(text) {
+  const m = new RegExp(IMAGE_RE.source).exec(text || '');
+  return m ? safeUrl(m[2], ['http:', 'https:']) : '';
+}

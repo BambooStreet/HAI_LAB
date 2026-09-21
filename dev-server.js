@@ -18,9 +18,11 @@ http.createServer(async (req, res) => {
     const name = pathname.slice(5).replace(/[^a-z0-9-]/gi, '');
     try {
       const { default: handler } = await import(pathToFileURL(join(root, 'api', `${name}.js`)).href);
-      let raw = '';
-      for await (const chunk of req) raw += chunk;
-      req.body = raw ? JSON.parse(raw) : undefined;
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const raw = Buffer.concat(chunks);
+      // Mirror Vercel: JSON bodies are parsed, everything else stays a Buffer.
+      req.body = !raw.length ? undefined : (req.headers['content-type'] || '').includes('json') ? JSON.parse(raw) : raw;
       return await handler(req, res);
     } catch (err) {
       res.statusCode = err.code === 'ERR_MODULE_NOT_FOUND' ? 404 : 500;

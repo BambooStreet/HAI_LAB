@@ -84,6 +84,9 @@
       padding: 18px 22px; transition: border-color .2s, transform .2s;
     }
     .paper:hover { border-color: var(--accent); transform: translateX(4px); }
+    .paper.has-thumb { display: grid; grid-template-columns: 1fr 88px; column-gap: 16px; }
+    .paper.has-thumb > :not(.paper-thumb) { grid-column: 1; }
+    .paper-thumb { grid-column: 2; grid-row: 1 / span 3; width: 88px; height: 88px; object-fit: cover; border-radius: 10px; align-self: center; }
     .paper-top { display: flex; gap: 12px; align-items: baseline; }
     .paper-no { color: var(--accent); font-weight: 700; font-size: 0.9rem; flex: none; }
     .paper-title { font-weight: 700; font-size: 1.05rem; }
@@ -218,7 +221,7 @@
   </dialog>
 
   <script type="module">
-    import { esc, rich, safeUrl } from '/assets/common.js';
+    import { esc, rich, safeUrl, renderBody, firstImage } from '/assets/common.js';
 
     const $ = (id) => document.getElementById(id);
     const PAGE_SIZE = 10;
@@ -278,9 +281,12 @@
         $('more-papers').hidden = true;
         return;
       }
-      list.innerHTML = papers.slice(0, shown).map((p, i) => `
+      list.innerHTML = papers.slice(0, shown).map((p, i) => {
+        const thumb = firstImage(p.body);
+        return `
         <li>
-          <button class="paper" type="button" data-id="${esc(p.id)}">
+          <button class="paper${thumb ? ' has-thumb' : ''}" type="button" data-id="${esc(p.id)}">
+            ${thumb ? `<img class="paper-thumb" src="${esc(thumb)}" alt="" loading="lazy" />` : ''}
             <div class="paper-top">
               <span class="paper-no">[${papers.length - i}]</span>
               <span class="paper-title">${esc(p.title)}</span>
@@ -288,7 +294,8 @@
             <div class="paper-meta">${esc(p.authors || '익명')} (${esc(year(p.date))}). <i>HAI LAB Journal</i> · ${esc(fmtDate(p.date))}</div>
             ${p.tags?.length ? `<div class="tags">${tagsHtml(p.tags)}</div>` : ''}
           </button>
-        </li>`).join('');
+        </li>`;
+      }).join('');
       $('more-papers').hidden = shown >= papers.length;
     }
 
@@ -299,7 +306,7 @@
       $('dialog-title').textContent = p.title;
       $('dialog-meta').innerHTML = `${esc(p.authors || '익명')} · ${esc(fmtDate(p.date))}`;
       $('dialog-tags').innerHTML = tagsHtml(p.tags);
-      $('dialog-body').innerHTML = rich(p.body || '(본문 없음)');
+      $('dialog-body').innerHTML = renderBody(p.body || '(본문 없음)');
       history.replaceState(null, '', `#paper-${encodeURIComponent(id)}`);
       if (!dialog.open) dialog.showModal();
       dialog.scrollTop = 0;
