@@ -314,8 +314,11 @@
     // ---------- auth ----------
     async function login(pw) {
       password = pw;
-      const { db, blob, passwordRequired } = await request('/api/login', 'POST');
+      const { db, blob, blobEnv = [], passwordRequired } = await request('/api/login', 'POST');
       $('blob-warn').hidden = blob;
+      if (!blob) {
+        $('blob-warn').append(` (서버에서 보이는 Blob 관련 환경변수: ${blobEnv.length ? blobEnv.join(', ') : '없음'})`);
+      }
       if (passwordRequired) try { sessionStorage.setItem(PW_KEY, pw); } catch {}
       $('db-warn').hidden = db;
       const data = await request('/api/data', 'GET');

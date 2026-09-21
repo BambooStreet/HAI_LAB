@@ -10,7 +10,7 @@ export const hasDb = Boolean(DATABASE_URL);
 // Blob token: default name is BLOB_READ_WRITE_TOKEN, but a store connected with a custom prefix uses <PREFIX>_READ_WRITE_TOKEN.
 export const blobToken =
   process.env.BLOB_READ_WRITE_TOKEN ||
-  Object.entries(process.env).find(([k, v]) => k.endsWith('_READ_WRITE_TOKEN') && v?.startsWith('vercel_blob_'))?.[1] ||
+  Object.entries(process.env).find(([k, v]) => /BLOB|READ_WRITE/i.test(k) && k.endsWith('TOKEN') && v?.startsWith('vercel_blob_'))?.[1] ||
   '';
 
 // Local dev without a database falls back to memory; on Vercel that would silently lose data, so it errors instead.

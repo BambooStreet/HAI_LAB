@@ -8,5 +8,7 @@ export default function handler(req, res) {
   }
   if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
   const local = !process.env.VERCEL;
-  return send(res, 200, { ok: true, db: hasDb || local, blob: Boolean(blobToken) || local, passwordRequired: passwordRequired() });
+  // Env var *names* only (never values), to help diagnose a missing Blob connection.
+  const blobEnv = Object.keys(process.env).filter((k) => /BLOB|READ_WRITE/i.test(k));
+  return send(res, 200, { ok: true, db: hasDb || local, blob: Boolean(blobToken) || local, blobEnv, passwordRequired: passwordRequired() });
 }
