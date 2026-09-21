@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HAI LAB</title>
+  <meta name="description" content="HAI(Human Animal Interaction) LAB — 청계천과 그곳에 사는 동물들을 연구하고 교감하는 연구실" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦆</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f7faf8;
+      --surface: #ffffff;
+      --text: #1d2b27;
+      --muted: #5b6b66;
+      --line: #dfe8e4;
+      --accent: #1f7a6b;
+      --accent-soft: #e3f2ee;
+      --water: #3a8fb7;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1614;
+        --surface: #16201d;
+        --text: #e6efec;
+        --muted: #9aaca6;
+        --line: #26332f;
+        --accent: #5cc2ae;
+        --accent-soft: #1b2e29;
+        --water: #6bb6d8;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Noto Sans KR", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Nav */
+    nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--bg) 85%, transparent);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav-inner {
+      max-width: 960px; margin: 0 auto; padding: 14px 20px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .logo { font-weight: 900; font-size: 1.2rem; letter-spacing: 0.04em; color: var(--text); }
+    .logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 20px; list-style: none; font-size: 0.95rem; }
+    .nav-links a { color: var(--muted); }
+    .nav-links a:hover { color: var(--accent); text-decoration: none; }
+
+    /* Hero */
+    .hero {
+      position: relative; overflow: hidden;
+      padding: 110px 20px 150px; text-align: center;
+      background: linear-gradient(180deg, var(--accent-soft), var(--bg));
+    }
+    .hero .eyebrow { color: var(--accent); font-weight: 700; letter-spacing: 0.15em; font-size: 0.85rem; }
+    .hero h1 { font-size: clamp(2.8rem, 9vw, 5.5rem); font-weight: 900; letter-spacing: 0.02em; margin: 8px 0 4px; }
+    .hero p { color: var(--muted); font-size: 1.05rem; }
+    .critters { font-size: 2rem; margin-top: 28px; letter-spacing: 0.3em; }
+    .critters span { display: inline-block; animation: bob 3s ease-in-out infinite; }
+    .critters span:nth-child(2) { animation-delay: .4s; }
+    .critters span:nth-child(3) { animation-delay: .8s; }
+    .critters span:nth-child(4) { animation-delay: 1.2s; }
+    .critters span:nth-child(5) { animation-delay: 1.6s; }
+    @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .waves { position: absolute; bottom: 0; left: 0; width: 200%; height: 80px; animation: flow 14s linear infinite; }
+    .waves path { fill: var(--water); opacity: 0.18; }
+    .waves path + path { opacity: 0.12; }
+    @keyframes flow { to { transform: translateX(-50%); } }
+    @media (prefers-reduced-motion: reduce) {
+      .waves, .critters span { animation: none; }
+    }
+
+    /* Sections */
+    section { max-width: 960px; margin: 0 auto; padding: 80px 20px; }
+    section + section { border-top: 1px solid var(--line); }
+    .section-label { color: var(--accent); font-weight: 700; font-size: 0.85rem; letter-spacing: 0.15em; text-transform: uppercase; }
+    h2 { font-size: 2rem; font-weight: 900; margin: 4px 0 28px; }
+
+    .welcome p { font-size: 1.1rem; margin-bottom: 16px; max-width: 680px; }
+    .welcome strong { color: var(--accent); }
+    .keywords { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+    .keywords span {
+      background: var(--accent-soft); color: var(--accent);
+      padding: 6px 14px; border-radius: 999px; font-size: 0.9rem; font-weight: 500;
+    }
+
+    /* Professor */
+    .prof {
+      display: grid; grid-template-columns: 200px 1fr; gap: 36px; align-items: start;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px;
+    }
+    .avatar {
+      width: 100%; aspect-ratio: 1; border-radius: 16px;
+      background: var(--accent-soft); display: grid; place-items: center; font-size: 5rem;
+    }
+    .prof h3 { font-size: 1.6rem; font-weight: 900; }
+    .prof .role { color: var(--muted); margin-bottom: 16px; }
+    .prof ul { list-style: none; }
+    .prof li { padding: 6px 0; border-bottom: 1px dashed var(--line); color: var(--muted); }
+    .prof li b { color: var(--text); font-weight: 500; display: inline-block; min-width: 80px; }
+
+    /* Members */
+    .members { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+    .member {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+      padding: 24px; text-align: center; transition: transform .2s, border-color .2s;
+    }
+    .member:hover { transform: translateY(-4px); border-color: var(--accent); }
+    .member .emoji { font-size: 2.6rem; }
+    .member h4 { font-size: 1.1rem; margin-top: 8px; }
+    .member .pos { color: var(--accent); font-size: 0.85rem; font-weight: 700; }
+    .member p { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
+
+    /* Contact */
+    .contact-box {
+      background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px;
+    }
+    .contact-box h4 { font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+    .contact-box p { font-size: 1.05rem; font-weight: 500; }
+
+    footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 40px 20px 60px; }
+
+    @media (max-width: 640px) {
+      .nav-links { gap: 12px; font-size: 0.85rem; }
+      .prof { grid-template-columns: 1fr; padding: 24px; }
+      .avatar { max-width: 160px; }
+      section { padding: 60px 16px; }
+    }
+    @media (max-width: 420px) {
+      .nav-links li:first-child { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <a href="#top" class="logo">HAI <span>LAB</span></a>
+      <ul class="nav-links">
+        <li><a href="#welcome">Welcome</a></li>
+        <li><a href="#professor">Professor</a></li>
+        <li><a href="#members">Members</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="eyebrow">HUMAN · ANIMAL · INTERACTION</div>
+    <h1>HAI LAB</h1>
+    <p>청계천의 동물들과 함께 호흡하는 연구실</p>
+    <div class="critters" aria-hidden="true"><span>🦆</span><span>🐟</span><span>🐦</span><span>🐢</span><span>🦢</span></div>
+    <svg class="waves" viewBox="0 0 2880 80" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 40 Q 180 0 360 40 T 720 40 T 1080 40 T 1440 40 T 1800 40 T 2160 40 T 2520 40 T 2880 40 V80 H0 Z" />
+      <path d="M0 50 Q 240 20 480 50 T 960 50 T 1440 50 T 1920 50 T 2400 50 T 2880 50 V80 H0 Z" />
+    </svg>
+  </header>
+
+  <main>
+    <section class="welcome" id="welcome">
+      <div class="section-label">Welcome</div>
+      <h2>환영합니다</h2>
+      <p>안녕하세요, 저희는 <strong>HAI(Human Animal Interaction) 연구실</strong>입니다.</p>
+      <p>HAI LAB은 서울 도심 한가운데를 흐르는 <strong>청계천</strong>과 그곳에 터를 잡고 살아가는 동물들을 연구합니다.
+        물가를 거니는 왜가리, 여유롭게 떠다니는 청둥오리, 돌 틈을 누비는 물고기들까지 —
+        저희는 이들을 단순히 관찰하는 데 그치지 않고, 사람과 동물 사이의 <strong>교감</strong>을 탐구합니다.</p>
+      <p>청계천을 걷다 오리와 눈이 마주쳤다면, 당신도 이미 HAI 연구에 한 발 들인 것입니다.</p>
+      <div class="keywords">
+        <span>#청계천</span><span>#도심생태</span><span>#교감</span><span>#오리관찰</span><span>#산책기반연구</span>
+      </div>
+    </section>
+
+    <section id="professor">
+      <div class="section-label">Professor</div>
+      <h2>지도교수</h2>
+      <div class="prof">
+        <div class="avatar" aria-hidden="true">🧑‍🏫</div>
+        <div>
+          <h3>조정인 교수</h3>
+          <div class="role">Principal Investigator, HAI LAB</div>
+          <ul>
+            <li><b>연구분야</b>청계천 동물 행동학, 인간-동물 교감론</li>
+            <li><b>주요업적</b>청계천 오리와 3초 이상 눈 마주치기 성공</li>
+            <li><b>연구실</b>청계천 산책로 어딘가 (벤치 3번)</li>
+            <li><b>한마디</b>"동물은 말이 없지만, 다 알고 있습니다."</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="members">
+      <div class="section-label">Members</div>
+      <h2>연구원</h2>
+      <div class="members">
+        <div class="member">
+          <div class="emoji">🦆</div>
+          <h4>멤버 1</h4>
+          <div class="pos">박사과정</div>
+          <p>청계천 오리 생활 패턴 연구</p>
+        </div>
+        <div class="member">
+          <div class="emoji">🐟</div>
+          <h4>멤버 2</h4>
+          <div class="pos">석사과정</div>
+          <p>청계천 어류와의 비언어적 소통</p>
+        </div>
+        <div class="member">
+          <div class="emoji">🐦</div>
+          <h4>멤버 3</h4>
+          <div class="pos">학부연구생</div>
+          <p>왜가리의 사냥 집중력 관찰</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact">
+      <div class="section-label">Contact</div>
+      <h2>연락처</h2>
+      <div class="contact-box">
+        <div>
+          <h4>Email</h4>
+          <p><a href="mailto:hailab@example.com">hailab@example.com</a></p>
+        </div>
+        <div>
+          <h4>Location</h4>
+          <p>서울특별시 청계천 일대<br />(주로 광통교 ~ 오간수교 구간)</p>
+        </div>
+        <div>
+          <h4>Office Hours</h4>
+          <p>날씨 좋은 날, 오리가 나올 때</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    © 2026 HAI LAB · Human Animal Interaction Laboratory · 청계천의 모든 생명에게 감사를 🦆
+  </footer>
+</body>
+</html>
