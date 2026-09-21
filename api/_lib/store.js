@@ -13,6 +13,10 @@ export const blobToken =
   Object.entries(process.env).find(([k, v]) => /BLOB|READ_WRITE/i.test(k) && k.endsWith('TOKEN') && v?.startsWith('vercel_blob_'))?.[1] ||
   '';
 
+// Newer Vercel Blob connections provide BLOB_STORE_ID and authenticate via Vercel OIDC instead of a token;
+// @vercel/blob picks that up automatically when no token is passed.
+export const hasBlob = Boolean(blobToken || process.env.BLOB_STORE_ID);
+
 // Local dev without a database falls back to memory; on Vercel that would silently lose data, so it errors instead.
 const memory = new Map();
 

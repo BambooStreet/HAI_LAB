@@ -1,4 +1,4 @@
-import { hasDb, blobToken } from './_lib/store.js';
+import { hasDb, hasBlob } from './_lib/store.js';
 import { send, isAdmin, passwordRequired } from './_lib/http.js';
 
 export default function handler(req, res) {
@@ -10,5 +10,5 @@ export default function handler(req, res) {
   const local = !process.env.VERCEL;
   // Env var *names* only (never values), to help diagnose a missing Blob connection.
   const blobEnv = Object.keys(process.env).filter((k) => /BLOB|READ_WRITE/i.test(k));
-  return send(res, 200, { ok: true, db: hasDb || local, blob: Boolean(blobToken) || local, blobEnv, passwordRequired: passwordRequired() });
+  return send(res, 200, { ok: true, db: hasDb || local, blob: hasBlob || local, blobEnv, passwordRequired: passwordRequired() });
 }

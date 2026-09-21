@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { send, isAdmin } from './_lib/http.js';
-import { blobToken } from './_lib/store.js';
+import { blobToken, hasBlob } from './_lib/store.js';
 
 // Images arrive already resized by the admin page, as a raw application/octet-stream body.
 const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
     const name = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
 
-    if (!blobToken) {
+    if (!hasBlob) {
       if (process.env.VERCEL) {
         return send(res, 503, { error: '사진 저장소가 연결되지 않았습니다. Vercel 프로젝트에 Blob을 연결해 주세요.' });
       }
@@ -59,7 +59,7 @@ export default async function handler(req, res) {
       return send(res, 200, { url: `http://${req.headers.host}/api/upload?file=${name}` });
     }
 
-    const blob = await put(`hai/${name}`, buffer, { access: 'public', contentType: type, token: blobToken });
+    const blob = await put(`hai/${name}`, buffer, { access: 'public', contentType: type, ...(blobToken && { token: blobToken }) });
     return send(res, 200, { url: blob.url });
   } catch (err) {
     console.error(err);
