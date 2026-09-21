@@ -1,28 +1,35 @@
-// Upstash Redis REST client (no dependencies).
-// Vercel's Upstash integration injects KV_REST_API_* ; plain Upstash uses UPSTASH_REDIS_REST_*.
-const REDIS_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+// Neon Postgres key-value store: one row per key, value stored as jsonb.
+// Vercel's Neon integration injects DATABASE_URL (and POSTGRES_URL).
+const DATABASE_URL = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
-export const hasDb = Boolean(REDIS_URL && REDIS_TOKEN);
+export const hasDb = Boolean(DATABASE_URL);
 
-// Local dev without Redis falls back to memory; on Vercel that would silently lose data, so it errors instead.
+// Local dev without a database falls back to memory; on Vercel that would silently lose data, so it errors instead.
 const memory = new Map();
 
-async function redis(args) {
-  const res = await fetch(REDIS_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(args),
+let sqlPromise;
+function db() {
+  sqlPromise ??= (async () => {
+    const { neon } = await import('@neondatabase/serverless');
+    const sql = neon(DATABASE_URL);
+    await sql`CREATE TABLE IF NOT EXISTS hai_kv (
+      key text PRIMARY KEY,
+      value jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )`;
+    return sql;
+  })().catch((err) => {
+    sqlPromise = undefined;
+    throw err;
   });
-  const json = await res.json();
-  if (!res.ok || json.error) throw new Error(json.error || `Redis HTTP ${res.status}`);
-  return json.result;
+  return sqlPromise;
 }
 
 export async function getJSON(key) {
   if (!hasDb) return memory.get(key) ?? null;
-  const value = await redis(['GET', key]);
-  return value == null ? null : JSON.parse(value);
+  const sql = await db();
+  const rows = await sql`SELECT value FROM hai_kv WHERE key = ${key}`;
+  return rows[0]?.value ?? null;
 }
 
 export async function setJSON(key, value) {
@@ -31,5 +38,7 @@ export async function setJSON(key, value) {
     memory.set(key, value);
     return;
   }
-  await redis(['SET', key, JSON.stringify(value)]);
+  const sql = await db();
+  await sql`INSERT INTO hai_kv (key, value) VALUES (${key}, ${JSON.stringify(value)}::jsonb)
+    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
 }

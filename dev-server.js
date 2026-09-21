@@ -1,5 +1,5 @@
 // Local preview without the Vercel CLI: serves static files (with clean URLs) and /api/* handlers.
-// Data is kept in memory unless KV_REST_API_URL / KV_REST_API_TOKEN are set.
+// Data is kept in memory unless DATABASE_URL (Neon) is set.
 // Usage: npm run dev   (set ADMIN_PASSWORD=... to require a password for /admin)
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';

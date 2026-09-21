@@ -130,15 +130,15 @@
     </div>
 
     <div id="app" hidden>
-      <div class="banner" id="db-warn" hidden>⚠️ 데이터베이스가 연결되지 않아 저장이 되지 않습니다. Vercel 프로젝트의 Storage 탭에서 Upstash Redis를 연결해 주세요.</div>
+      <div class="banner" id="db-warn" hidden>⚠️ 데이터베이스가 연결되지 않아 저장이 되지 않습니다. Vercel 프로젝트의 Storage 탭에서 Neon 데이터베이스를 연결해 주세요.</div>
 
       <div class="tabs" role="tablist">
-        <button role="tab" data-tab="papers" aria-selected="true">📄 Papers</button>
-        <button role="tab" data-tab="content" aria-selected="false">🏠 홈페이지 내용</button>
+        <button role="tab" data-tab="content" aria-selected="true">🏠 홈페이지 내용</button>
+        <button role="tab" data-tab="papers" aria-selected="false">📄 Papers</button>
       </div>
 
       <!-- Papers tab -->
-      <div id="tab-papers">
+      <div id="tab-papers" hidden>
         <form class="card" id="paper-form" hidden>
           <h3 id="paper-form-title">새 글</h3>
           <label><span>제목</span><input name="title" required maxlength="200" /></label>
@@ -163,7 +163,7 @@
       </div>
 
       <!-- Content tab -->
-      <div id="tab-content" hidden>
+      <div id="tab-content">
         <form id="content-form" autocomplete="off"></form>
       </div>
     </div>
@@ -231,6 +231,7 @@
       content = clone(savedContent);
       $('login-view').hidden = true;
       $('app').hidden = false;
+      $('savebar').hidden = false;
       $('logout').hidden = !passwordRequired;
       renderPapers();
       renderContentForm();

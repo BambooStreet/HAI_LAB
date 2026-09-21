@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     return send(res, 405, { error: 'Method not allowed' });
   } catch (err) {
     if (err.message === 'NO_DB') {
-      return send(res, 503, { error: '데이터베이스가 연결되지 않았습니다. Vercel 프로젝트에 Upstash Redis를 연결해 주세요.' });
+      return send(res, 503, { error: '데이터베이스가 연결되지 않았습니다. Vercel 프로젝트에 Neon 데이터베이스를 연결해 주세요.' });
     }
     console.error(err);
     return send(res, 500, { error: '서버 오류가 발생했습니다.' });
