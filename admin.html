@@ -191,6 +191,25 @@
     .memo-body a, .editor a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
     .editor.memo-editor { min-height: 200px; }
 
+    .memo-foot { display: flex; gap: 6px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .react { background: none; border: 1px solid transparent; border-radius: 999px; padding: 4px 12px; font-size: 0.85rem; color: var(--muted); }
+    .react:hover { background: var(--surface-2); color: var(--text); }
+    .react.on { color: var(--text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+    .comments { margin-top: 10px; background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+    .comments ul { list-style: none; display: grid; gap: 10px; }
+    .threads { margin-bottom: 10px; }
+    .thread { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+    .replies { margin: 8px 0 0 14px; padding-left: 12px; border-left: 2px solid var(--line); display: grid; gap: 8px; }
+    .reply-form input { padding: 6px 10px; font-size: 0.85rem; }
+    .c-body { white-space: pre-wrap; word-break: break-word; font-size: 0.9rem; line-height: 1.6; }
+    .c-body a { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; }
+    .c-body img { display: block; max-width: 100%; max-height: 240px; margin: 6px 0; border-radius: 8px; cursor: zoom-in; }
+    .c-meta { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+    .c-meta button { background: none; border: none; padding: 0; color: var(--muted); font-size: inherit; text-decoration: underline; }
+    .c-meta button:hover { color: var(--danger); }
+    .comment-form { display: flex; gap: 6px; }
+    .comment-form input { padding: 8px 12px; font-size: 0.9rem; }
+
     @media (max-width: 640px) {
       .grid-2, .row-fields { grid-template-columns: 1fr; }
       .post { flex-wrap: wrap; }
@@ -335,6 +354,22 @@
 
     const $ = (id) => document.getElementById(id);
     const PW_KEY = 'hai-admin-pw';
+    // Random per-browser id so memo likes count once per browser. Not tied to anything else.
+    const clientId = (() => {
+      const make = () => crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+      try {
+        let id = localStorage.getItem('hai-client-id');
+        if (!id) localStorage.setItem('hai-client-id', (id = make()));
+        return id;
+      } catch {
+        return make();
+      }
+    })();
+    const apiHeaders = () => ({
+      'Content-Type': 'application/json',
+      'x-admin-password': encodeURIComponent(password),
+      'x-client-id': clientId,
+    });
     let password = '';
     let papers = [];
     let content = null;       // working copy being edited
@@ -405,7 +440,7 @@
     async function request(url, method, body) {
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', 'x-admin-password': encodeURIComponent(password) },
+        headers: apiHeaders(),
         body: body ? JSON.stringify(body) : undefined,
         cache: 'no-store',
       });
@@ -919,24 +954,137 @@
     const memoDirty = () => !memoForm.hidden && memoSnapshot() !== memoInitial;
     const timeOf = (ms) => new Date(ms).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
 
+    const openComments = new Set(); // memo ids whose comment box the user opened
+    const blankMemo = { comments: [], likes: 0, liked: false };
+
+    let replyTo = null; // top-level comment id whose reply box is open
+
+    const commentForm = (memoId, parentId = '') => `
+      <form class="comment-form${parentId ? ' reply-form' : ''}" data-comment-form="${esc(memoId)}" data-parent="${esc(parentId)}" autocomplete="off">
+        <input name="body" maxlength="2000" placeholder="${parentId ? '답글 달기…' : '댓글 달기…'}" aria-label="${parentId ? '답글' : '댓글'}" required />
+        <button class="btn" type="submit">등록</button>
+      </form>`;
+
+    // A reply's 답글 button replies within the same thread (its top-level comment).
+    const commentItem = (c, threadId) => `
+      <li>
+        <div class="c-body">${renderBody(c.body, { links: true })}</div>
+        <div class="c-meta">${timeOf(c.createdAt)} · <button type="button" data-reply="${esc(threadId)}">답글</button> · <button type="button" data-comment-del="${esc(c.id)}">삭제</button></div>
+      </li>`;
+
+    function commentThreads(m) {
+      const ids = new Set(m.comments.map((c) => c.id));
+      const isTop = (c) => !c.parentId || !ids.has(c.parentId); // an orphaned reply shows as top-level
+      return m.comments.filter(isTop).map((c) => {
+        const replies = m.comments.filter((r) => r.parentId === c.id);
+        return `
+          <li class="thread">
+            <ul>${commentItem(c, c.id).trim()}</ul>
+            ${replies.length || replyTo === c.id ? `
+            <div class="replies">
+              ${replies.length ? `<ul>${replies.map((r) => commentItem(r, c.id)).join('')}</ul>` : ''}
+              ${replyTo === c.id ? commentForm(m.id, c.id) : ''}
+            </div>` : ''}
+          </li>`;
+      }).join('');
+    }
+
+    function memoCard(m) {
+      const showComments = m.comments.length > 0 || openComments.has(m.id);
+      return `
+        <article class="memo" data-memo="${esc(m.id)}">
+          <header class="memo-head">
+            <div class="memo-info">
+              ${m.title ? `<h4>${esc(m.title)}</h4>` : ''}
+              <div class="meta">${timeOf(m.createdAt)}${m.updatedAt > m.createdAt ? ` · 수정됨 ${timeOf(m.updatedAt)}` : ''}</div>
+            </div>
+            <div class="actions">
+              <button class="btn" type="button" data-memo-edit="${esc(m.id)}">수정</button>
+              <button class="btn danger" type="button" data-memo-del="${esc(m.id)}">삭제</button>
+            </div>
+          </header>
+          ${m.body ? `<div class="memo-body">${renderBody(m.body, { links: true })}</div>` : ''}
+          <footer class="memo-foot">
+            <button class="react${m.liked ? ' on' : ''}" type="button" data-like="${esc(m.id)}" aria-pressed="${m.liked}">
+              ${m.liked ? '❤️' : '🤍'} 좋아요${m.likes ? ` ${m.likes}` : ''}
+            </button>
+            <button class="react" type="button" data-comments="${esc(m.id)}">💬 댓글${m.comments.length ? ` ${m.comments.length}` : ''}</button>
+          </footer>
+          ${showComments ? `
+          <div class="comments">
+            ${m.comments.length ? `<ul class="threads">${commentThreads(m)}</ul>` : ''}
+            ${commentForm(m.id)}
+          </div>` : ''}
+        </article>`;
+    }
+
     function renderMemos() {
       $('memo-count').textContent = memoLoaded ? `총 ${memos.length}개` : '';
       $('memo-list').innerHTML = memos.length
-        ? memos.map((m) => `
-          <article class="memo">
-            <header class="memo-head">
-              <div class="memo-info">
-                ${m.title ? `<h4>${esc(m.title)}</h4>` : ''}
-                <div class="meta">${timeOf(m.createdAt)}${m.updatedAt > m.createdAt ? ` · 수정됨 ${timeOf(m.updatedAt)}` : ''}</div>
-              </div>
-              <div class="actions">
-                <button class="btn" type="button" data-memo-edit="${esc(m.id)}">수정</button>
-                <button class="btn danger" type="button" data-memo-del="${esc(m.id)}">삭제</button>
-              </div>
-            </header>
-            ${m.body ? `<div class="memo-body">${renderBody(m.body, { links: true })}</div>` : ''}
-          </article>`).join('')
+        ? memos.map(memoCard).join('')
         : '<div class="empty">아직 메모가 없어요. 첫 메모를 남겨보세요.</div>';
+    }
+
+    // Re-render one card only, so a comment being typed in another card isn't wiped.
+    // focus: '' for the card's comment box, or a thread id for that thread's reply box.
+    function renderMemo(id, focus = null) {
+      const m = memos.find((x) => x.id === id);
+      const el = $('memo-list').querySelector(`[data-memo="${CSS.escape(id)}"]`);
+      if (!m || !el) return renderMemos();
+      el.outerHTML = memoCard(m);
+      if (focus !== null) {
+        $('memo-list').querySelector(`[data-comment-form="${CSS.escape(id)}"][data-parent="${CSS.escape(focus)}"] input`)?.focus();
+      }
+    }
+
+    async function memoAction(url, method, body) {
+      try {
+        return await request(url, method, body);
+      } catch (err) {
+        toast(err.message, true);
+        if (/삭제된/.test(err.message)) loadMemos();
+        return null;
+      }
+    }
+
+    async function toggleLike(id) {
+      const m = memos.find((x) => x.id === id);
+      if (!m) return;
+      const like = !m.liked;
+      Object.assign(m, { liked: like, likes: m.likes + (like ? 1 : -1) }); // show it right away
+      renderMemo(id);
+      const r = await memoAction('/api/memo?action=like', 'POST', { memoId: id, like });
+      if (r) Object.assign(m, r);
+      else Object.assign(m, { liked: !like, likes: m.likes + (like ? -1 : 1) });
+      renderMemo(id);
+    }
+
+    async function addMemoComment(form) {
+      const id = form.dataset.commentForm;
+      const parentId = form.dataset.parent;
+      const input = form.body;
+      const text = input.value.trim();
+      if (!text) return;
+      input.disabled = true;
+      const r = await memoAction('/api/memo?action=comment', 'POST', { memoId: id, body: text, parentId });
+      input.disabled = false;
+      const m = memos.find((x) => x.id === id);
+      if (!r || !m) return input.focus();
+      m.comments.push(r.comment);
+      openComments.add(id);
+      if (parentId) replyTo = null; // reply posted: close the reply box
+      renderMemo(id, parentId ? null : '');
+    }
+
+    async function deleteMemoComment(commentId) {
+      const m = memos.find((x) => x.comments.some((c) => c.id === commentId));
+      if (!m) return;
+      const replies = m.comments.filter((c) => c.parentId === commentId).length;
+      if (!confirm(replies ? `댓글과 답글 ${replies}개를 삭제할까요?` : '댓글을 삭제할까요?')) return;
+      if (!(await memoAction(`/api/memo?comment=${encodeURIComponent(commentId)}`, 'DELETE'))) return;
+      m.comments = m.comments.filter((c) => c.id !== commentId && c.parentId !== commentId);
+      if (replyTo === commentId) replyTo = null;
+      renderMemo(m.id);
     }
 
     async function loadMemos() {
@@ -971,7 +1119,7 @@
     async function sendMemo(method, body) {
       const res = await fetch('/api/memo', {
         method,
-        headers: { 'Content-Type': 'application/json', 'x-admin-password': encodeURIComponent(password) },
+        headers: apiHeaders(),
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
@@ -1000,7 +1148,9 @@
           ({ status, data } = await sendMemo('POST', post));
         }
         if (status >= 400) throw new Error(data.error || `저장하지 못했습니다 (${status})`);
-        memos = [data.memo, ...memos.filter((m) => m.id !== data.memo.id)].sort((a, b) => b.createdAt - a.createdAt);
+        const prev = memos.find((m) => m.id === data.memo.id); // keep its comments and likes
+        memos = [{ ...blankMemo, ...prev, ...data.memo }, ...memos.filter((m) => m.id !== data.memo.id)]
+          .sort((a, b) => b.createdAt - a.createdAt);
         toast(memoEditing ? '수정했습니다.' : '메모를 남겼어요.');
         closeMemoForm();
         renderMemos();
@@ -1012,8 +1162,28 @@
     });
 
     $('memo-list').addEventListener('click', async (e) => {
-      const img = e.target.closest('.memo-body img');
+      const img = e.target.closest('.memo-body img, .c-body img');
       if (img) return window.open(img.src, '_blank', 'noopener');
+      const like = e.target.closest('[data-like]');
+      if (like) return toggleLike(like.dataset.like);
+      const cmt = e.target.closest('[data-comments]');
+      if (cmt) {
+        const id = cmt.dataset.comments;
+        const open = $('memo-list').querySelector(`[data-comment-form="${CSS.escape(id)}"][data-parent=""]`);
+        if (open) return open.body.focus();
+        openComments.add(id);
+        return renderMemo(id, '');
+      }
+      const reply = e.target.closest('[data-reply]');
+      if (reply) {
+        const memoId = reply.closest('[data-memo]').dataset.memo;
+        const prev = replyTo && memos.find((m) => m.comments.some((c) => c.id === replyTo));
+        replyTo = reply.dataset.reply;
+        if (prev && prev.id !== memoId) renderMemo(prev.id); // only one reply box open at a time
+        return renderMemo(memoId, replyTo);
+      }
+      const cdel = e.target.closest('[data-comment-del]');
+      if (cdel) return deleteMemoComment(cdel.dataset.commentDel);
       const edit = e.target.closest('[data-memo-edit]');
       if (edit) return openMemoForm(memos.find((m) => m.id === edit.dataset.memoEdit));
       const del = e.target.closest('[data-memo-del]');
@@ -1029,6 +1199,13 @@
       } catch (err) {
         toast(err.message, true);
       }
+    });
+
+    $('memo-list').addEventListener('submit', (e) => {
+      const form = e.target.closest('[data-comment-form]');
+      if (!form) return;
+      e.preventDefault();
+      addMemoComment(form);
     });
 
     $('memo-new').addEventListener('click', () => openMemoForm(null));
