@@ -117,6 +117,16 @@
     .editor b, .editor strong { color: var(--accent); }
     .editor img { display: block; max-width: 100%; max-height: 360px; margin: 8px 0; border-radius: 10px; border: 1px solid var(--line); }
     .editor img[data-uploading] { opacity: .45; }
+    .editor img:not([data-uploading]) { cursor: pointer; }
+    .editor img.picked { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .img-sizer {
+      position: fixed; z-index: 30; display: flex; gap: 2px; padding: 4px; width: max-content;
+      background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+    }
+    .img-sizer[hidden] { display: none; }
+    .img-sizer button { background: none; border: none; border-radius: 7px; padding: 5px 9px; font-size: 0.82rem; color: var(--text); }
+    .img-sizer button:hover { background: var(--accent-soft); }
+    .img-sizer button.on { background: var(--accent); color: var(--on-accent); font-weight: 700; }
 
     .savebar {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
@@ -241,6 +251,7 @@
             <div class="editor memo-editor" id="memo-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="메모 내용"
                  data-placeholder="메모를 남겨보세요. 사진은 붙여넣기(Ctrl+V)나 끌어다 놓기로, 링크는 주소를 그대로 붙여넣어도 돼요."></div>
           </div>
+          <p class="hint">📷 넣은 사진을 클릭하면 크기(25~100%)를 바꿀 수 있어요.</p>
           <div class="form-actions">
             <button class="btn" type="button" id="memo-cancel">취소</button>
             <button class="btn primary" type="submit">저장</button>
@@ -288,7 +299,7 @@
             <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="본문"
                  data-placeholder="여기에 본문을 쓰세요. 사진은 붙여넣기(Ctrl+V)나 끌어다 놓기로 바로 넣을 수 있어요."></div>
           </div>
-          <p class="hint">📷 사진은 <b>붙여넣기(Ctrl+V)</b>, <b>끌어다 놓기</b>, 또는 <b>사진 넣기</b> 버튼으로 커서 위치에 들어가요. 사진을 지우려면 사진 뒤에서 Backspace를 누르세요.</p>
+          <p class="hint">📷 사진은 <b>붙여넣기(Ctrl+V)</b>, <b>끌어다 놓기</b>, 또는 <b>사진 넣기</b> 버튼으로 커서 위치에 들어가요. 사진을 <b>클릭</b>하면 크기를 바꿀 수 있고, 지우려면 사진 뒤에서 Backspace를 누르세요.</p>
           <div class="form-actions">
             <button class="btn" type="button" id="paper-cancel">취소</button>
             <button class="btn primary" type="submit">저장</button>
@@ -582,6 +593,9 @@
     // ---------- rich editor ----------
     // contenteditable editor shared by papers and memos. Saved as plain text with **bold**,
     // ![](url) image lines and, when `links` is on, [label](url) links.
+    // Width (in %) the user picked for a photo, or 0 for the default size.
+    const imgSize = (img) => Number(/^(\d{1,3})%$/.exec(img.style.width)?.[1]) || 0;
+
     function createEditor(el, { links = false, onUploading = () => {} } = {}) {
       let uploading = 0;
       let lastRange = null;
@@ -589,9 +603,14 @@
 
       function serialize() {
         let out = '';
+        let afterImage = false;
         const walk = (node) => {
           for (const n of node.childNodes) {
-            if (n.nodeType === Node.TEXT_NODE) { out += n.nodeValue; continue; }
+            // An image line already ends in "\n"; the rendered body keeps that "\n" as text right after
+            // the <img>, so drop it here or every edit would add one more blank line under each photo.
+            const skipNewline = afterImage;
+            afterImage = false;
+            if (n.nodeType === Node.TEXT_NODE) { out += skipNewline ? n.nodeValue.replace(/^\n/, '') : n.nodeValue; continue; }
             if (n.nodeType !== Node.ELEMENT_NODE) continue;
             const tag = n.tagName;
             if (tag === 'BR') { out += '\n'; continue; }
@@ -599,7 +618,8 @@
               const src = n.getAttribute('src') || '';
               if (!n.dataset.uploading && /^https?:\/\//.test(src)) {
                 if (out && !out.endsWith('\n')) out += '\n';
-                out += `![](${src})\n`;
+                out += `![${imgSize(n) ? `${imgSize(n)}%` : ''}](${src})\n`;
+                afterImage = true;
               }
               continue;
             }
@@ -624,6 +644,58 @@
         walk(el);
         return out.replace(/\s+$/, '');
       }
+
+      // ----- photo size: click a photo, pick a width -----
+      const SIZES = [25, 50, 75, 100];
+      const sizer = document.createElement('div');
+      sizer.className = 'img-sizer';
+      sizer.hidden = true;
+      sizer.innerHTML = SIZES.map((n) => `<button type="button" data-size="${n}">${n}%</button>`).join('')
+        + '<button type="button" data-size="0" title="처음 크기로">기본</button>';
+      document.body.append(sizer);
+      let picked = null;
+
+      function placeSizer() {
+        if (!picked) return;
+        // Just above the photo so it doesn't cover it; below when there's no room above.
+        const r = picked.getBoundingClientRect();
+        const above = r.top - sizer.offsetHeight - 6;
+        sizer.style.top = `${above >= 8 ? above : r.bottom + 6}px`;
+        sizer.style.left = `${Math.max(8, Math.min(r.left + 8, innerWidth - sizer.offsetWidth - 8))}px`;
+      }
+      function pick(img) {
+        picked?.classList.remove('picked');
+        picked = img;
+        sizer.hidden = !img;
+        if (!img) return;
+        img.classList.add('picked');
+        for (const b of sizer.children) b.classList.toggle('on', Number(b.dataset.size) === imgSize(img));
+        placeSizer();
+      }
+      function setSize(img, n) {
+        img.style.width = n ? `${n}%` : '';
+        img.style.maxHeight = n ? 'none' : '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      el.addEventListener('click', (e) => {
+        const img = e.target.closest('img');
+        pick(img && !img.dataset.uploading ? img : null);
+      });
+      el.addEventListener('keydown', () => pick(null));
+      document.addEventListener('submit', () => pick(null), true);
+      document.addEventListener('click', (e) => {
+        if (picked && !el.contains(e.target) && !sizer.contains(e.target)) pick(null);
+      });
+      addEventListener('scroll', placeSizer, true);
+      addEventListener('resize', placeSizer);
+      sizer.addEventListener('mousedown', (e) => e.preventDefault());
+      sizer.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-size]');
+        if (!b || !picked) return;
+        setSize(picked, Number(b.dataset.size));
+        pick(picked);
+      });
 
       // Remember the caret so toolbar buttons insert where the user was typing.
       document.addEventListener('selectionchange', () => {
@@ -741,6 +813,7 @@
       return {
         get value() { return serialize(); },
         set value(text) {
+          pick(null);
           el.innerHTML = renderBody(text, { links });
           lastRange = null;
         },

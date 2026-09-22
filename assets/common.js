@@ -24,6 +24,14 @@ export function safeUrl(url, schemes = ['http:', 'https:', 'mailto:', 'tel:']) {
 // Paper body: **bold** plus ![caption](https://...) images.
 const IMAGE_RE = /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)/g;
 
+// A caption of the form "50%" is a display width set in the editor (![50%](url)), not alt text.
+export const IMAGE_SIZE_RE = /^(\d{1,3})%$/;
+function image(alt, url) {
+  const size = Number(IMAGE_SIZE_RE.exec(alt)?.[1]);
+  const style = size >= 10 && size <= 100 ? ` style="width:${size}%;max-height:none"` : '';
+  return `<img class="body-img" src="${url}" alt="${style ? '' : alt}"${style} loading="lazy" />`;
+}
+
 // With { links: true }, also [label](https://...) links and bare https:// URLs, in one pass so an
 // image's URL is never re-linked. Runs on already-escaped text, so URLs stop at escaped quotes/brackets.
 // ASCII only, so Korean right after a URL ("https://a.com에서") stays out of the link.
@@ -34,7 +42,7 @@ const link = (url, label) => `<a href="${url}" target="_blank" rel="noopener nor
 
 export function renderBody(text, { links = false } = {}) {
   if (!links) {
-    return rich(text).replace(IMAGE_RE, (_, alt, url) => `<img class="body-img" src="${url}" alt="${alt}" loading="lazy" />`);
+    return rich(text).replace(IMAGE_RE, (_, alt, url) => image(alt, url));
   }
   return rich(text).replace(LINKED_RE, (_, bang, label, url, bare) => {
     if (bare) {
@@ -49,7 +57,7 @@ export function renderBody(text, { links = false } = {}) {
       return link(href, href) + trail;
     }
     return bang
-      ? `<img class="body-img" src="${url}" alt="${label}" loading="lazy" />`
+      ? image(label, url)
       : link(url, label || url);
   });
 }
