@@ -7,12 +7,12 @@ const SEEDED_KEY = 'hai:memo-seeded'; // set once the default posts below have b
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 export function cleanMemo(input) {
   const m = input && typeof input === 'object' ? input : {};
-  return { title: str(m.title, 200).trim(), author: str(m.author, 50).trim(), body: str(m.body, 50000).replace(/\s+$/, '') };
+  return { title: str(m.title, 200).trim(), body: str(m.body, 50000).replace(/\s+$/, '') };
 }
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const toMemo = (r) => ({
-  id: r.id, title: r.title, author: r.author, body: r.body,
+  id: r.id, title: r.title, body: r.body,
   createdAt: Number(r.created_at), updatedAt: Number(r.updated_at), version: Number(r.version),
 });
 
@@ -25,7 +25,7 @@ async function db() {
   await once(table, () => q`CREATE TABLE IF NOT EXISTS hai_memos (
     id text PRIMARY KEY,
     title text NOT NULL DEFAULT '',
-    author text NOT NULL DEFAULT '',
+    author text NOT NULL DEFAULT '', -- unused (authors were dropped); kept so existing tables still match
     body text NOT NULL DEFAULT '',
     created_at bigint NOT NULL,
     updated_at bigint NOT NULL,
@@ -58,13 +58,13 @@ const DEFAULT_MEMOS = [
 async function seedDefaults() {
   if (await getJSON(SEEDED_KEY)) return;
   const now = Date.now();
-  const rows = DEFAULT_MEMOS.map((m, i) => ({ ...m, author: '', at: now - i }));
+  const rows = DEFAULT_MEMOS.map((m, i) => ({ ...m, at: now - i }));
   if (hasDb) {
     const q = await db();
     // Fixed ids + DO NOTHING: two first visits at once can't add the posts twice.
     for (const r of rows) {
-      await q`INSERT INTO hai_memos (id, title, author, body, created_at, updated_at)
-        VALUES (${r.id}, ${r.title}, '', ${r.body}, ${r.at}, ${r.at}) ON CONFLICT (id) DO NOTHING`;
+      await q`INSERT INTO hai_memos (id, title, body, created_at, updated_at)
+        VALUES (${r.id}, ${r.title}, ${r.body}, ${r.at}, ${r.at}) ON CONFLICT (id) DO NOTHING`;
     }
   } else {
     for (const r of rows) {
@@ -93,8 +93,8 @@ export async function createMemo(input) {
     return toMemo(row);
   }
   const q = await db();
-  const [r] = await q`INSERT INTO hai_memos (id, title, author, body, created_at, updated_at)
-    VALUES (${row.id}, ${m.title}, ${m.author}, ${m.body}, ${now}, ${now}) RETURNING *`;
+  const [r] = await q`INSERT INTO hai_memos (id, title, body, created_at, updated_at)
+    VALUES (${row.id}, ${m.title}, ${m.body}, ${now}, ${now}) RETURNING *`;
   return toMemo(r);
 }
 
@@ -113,7 +113,7 @@ export async function updateMemo(id, base, input) {
   }
   const q = await db();
   const [r] = await q`UPDATE hai_memos
-    SET title = ${m.title}, author = ${m.author}, body = ${m.body}, updated_at = ${now}, version = version + 1
+    SET title = ${m.title}, body = ${m.body}, updated_at = ${now}, version = version + 1
     WHERE id = ${id} AND version = ${base} RETURNING *`;
   if (r) return toMemo(r);
   const [cur] = await q`SELECT * FROM hai_memos WHERE id = ${id}`;

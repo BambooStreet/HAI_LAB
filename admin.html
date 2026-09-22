@@ -228,10 +228,7 @@
       <div id="tab-memo" hidden>
         <form class="card" id="memo-form" hidden autocomplete="off">
           <h3 id="memo-form-title">새 메모</h3>
-          <div class="grid-2">
-            <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
-            <label><span>작성자</span><input name="author" maxlength="50" placeholder="이름" /></label>
-          </div>
+          <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
           <div class="body-field">
             <div class="body-bar">
               <span>내용</span>
@@ -835,7 +832,6 @@
     // ---------- memo board ----------
     // Admin-only posts. Each save carries the version it was based on; if someone else saved
     // the same post in between, the server answers 409 and we ask before overwriting.
-    const AUTHOR_KEY = 'hai-memo-author';
     const memoForm = $('memo-form');
     const memoEditor = createEditor($('memo-editor'), {
       links: true,
@@ -846,7 +842,7 @@
     let memoEditing = null; // { id, version } while editing an existing post
     let memoInitial = '';
 
-    const memoSnapshot = () => JSON.stringify([memoForm.title.value, memoForm.author.value, memoEditor.value]);
+    const memoSnapshot = () => JSON.stringify([memoForm.title.value, memoEditor.value]);
     const memoDirty = () => !memoForm.hidden && memoSnapshot() !== memoInitial;
     const timeOf = (ms) => new Date(ms).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -858,7 +854,7 @@
             <header class="memo-head">
               <div class="memo-info">
                 ${m.title ? `<h4>${esc(m.title)}</h4>` : ''}
-                <div class="meta">${esc(m.author || '익명')} · ${timeOf(m.createdAt)}${m.updatedAt > m.createdAt ? ` · 수정됨 ${timeOf(m.updatedAt)}` : ''}</div>
+                <div class="meta">${timeOf(m.createdAt)}${m.updatedAt > m.createdAt ? ` · 수정됨 ${timeOf(m.updatedAt)}` : ''}</div>
               </div>
               <div class="actions">
                 <button class="btn" type="button" data-memo-edit="${esc(m.id)}">수정</button>
@@ -887,14 +883,11 @@
       memoEditing = m ? { id: m.id, version: m.version } : null;
       $('memo-form-title').textContent = m ? '메모 수정' : '새 메모';
       memoForm.title.value = m?.title ?? '';
-      let author = m?.author ?? '';
-      if (!m) try { author = localStorage.getItem(AUTHOR_KEY) || ''; } catch {}
-      memoForm.author.value = author;
       memoEditor.value = m?.body ?? '';
       memoInitial = memoSnapshot();
       memoForm.hidden = false;
       memoForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      (m || author ? $('memo-editor') : memoForm.author).focus({ preventScroll: true });
+      (m ? $('memo-editor') : memoForm.title).focus({ preventScroll: true });
     }
 
     function closeMemoForm() {
@@ -916,9 +909,8 @@
     memoForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (memoEditor.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요.');
-      const post = { title: memoForm.title.value.trim(), author: memoForm.author.value.trim(), body: memoEditor.value };
+      const post = { title: memoForm.title.value.trim(), body: memoEditor.value };
       if (!post.title && !post.body.trim()) return toast('제목이나 내용을 입력해 주세요.', true);
-      try { localStorage.setItem(AUTHOR_KEY, post.author); } catch {}
 
       const submit = memoForm.querySelector('[type=submit]');
       submit.disabled = true;
