@@ -50,8 +50,9 @@
 
     .banner { padding: 12px 16px; border-radius: 12px; margin-bottom: 20px; font-size: 0.9rem; border: 1px solid var(--danger); color: var(--danger); }
 
-    .tabs { display: flex; gap: 6px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+    .tabs { display: flex; gap: 6px; margin-bottom: 24px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
     .tabs button {
+      flex: none; white-space: nowrap;
       background: none; border: none; padding: 10px 16px; color: var(--muted);
       border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500;
     }
@@ -166,10 +167,19 @@
     .stat-table td:last-child, .stat-table th:last-child { text-align: right; width: 5.5em; font-variant-numeric: tabular-nums; }
     .stat-table .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; }
 
-    /* Memo */
-    #memo-text { min-height: 60vh; font-size: 0.95rem; line-height: 1.7; }
-    .memo-status { color: var(--muted); font-size: 0.85rem; }
-    .memo-status.err { color: var(--danger); }
+    /* Memo board */
+    .memo-list { display: grid; gap: 12px; }
+    .memo { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+    .memo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .memo-info { min-width: 0; }
+    .memo-head h4 { font-size: 1rem; font-weight: 700; margin-bottom: 2px; overflow-wrap: anywhere; }
+    .memo-head .meta { color: var(--muted); font-size: 0.82rem; }
+    .memo-head .actions { display: flex; gap: 6px; flex: none; }
+    .memo-head .btn { padding: 4px 10px; font-size: 0.82rem; }
+    .memo-body { margin-top: 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 0.95rem; }
+    .memo-body img { display: block; max-width: 100%; max-height: 420px; margin: 6px 0; border-radius: 10px; border: 1px solid var(--line); cursor: zoom-in; }
+    .memo-body a, .editor a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+    .editor.memo-editor { min-height: 200px; }
 
     @media (max-width: 640px) {
       .grid-2, .row-fields { grid-template-columns: 1fr; }
@@ -216,12 +226,39 @@
 
       <!-- Memo tab -->
       <div id="tab-memo" hidden>
+        <form class="card" id="memo-form" hidden autocomplete="off">
+          <h3 id="memo-form-title">새 메모</h3>
+          <div class="grid-2">
+            <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
+            <label><span>작성자</span><input name="author" maxlength="50" placeholder="이름" /></label>
+          </div>
+          <div class="body-field">
+            <div class="body-bar">
+              <span>내용</span>
+              <div class="btns">
+                <button class="btn" type="button" id="memo-bold" title="굵게 (Ctrl+B)"><b>B</b></button>
+                <button class="btn" type="button" id="memo-link" title="글자를 선택하고 누르면 그 글자에 링크가 걸려요">🔗 링크</button>
+                <button class="btn" type="button" id="memo-image">🖼️ 사진</button>
+              </div>
+            </div>
+            <div class="editor memo-editor" id="memo-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="메모 내용"
+                 data-placeholder="메모를 남겨보세요. 사진은 붙여넣기(Ctrl+V)나 끌어다 놓기로, 링크는 주소를 그대로 붙여넣어도 돼요."></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="button" id="memo-cancel">취소</button>
+            <button class="btn primary" type="submit">저장</button>
+          </div>
+        </form>
+
         <div class="toolbar">
-          <span class="memo-status" id="memo-status"></span>
-          <button class="btn" type="button" id="memo-reload" hidden>최신 내용 불러오기</button>
+          <span class="count" id="memo-count"></span>
+          <div style="display:flex;gap:6px">
+            <button class="btn" type="button" id="memo-refresh" title="새로고침">↻</button>
+            <button class="btn primary" type="button" id="memo-new">+ 새 메모</button>
+          </div>
         </div>
-        <textarea id="memo-text" placeholder="관리자만 보는 메모장이에요. 입력하면 자동으로 저장됩니다." spellcheck="false" disabled></textarea>
-        <p class="hint" style="margin-top:8px">🔒 사이트 방문자에게는 보이지 않습니다. 입력을 멈추면 1초 뒤 자동 저장돼요.</p>
+        <div class="memo-list" id="memo-list"></div>
+        <p class="hint" style="margin-top:14px">🔒 관리자만 볼 수 있어요. 사이트 방문자에게는 보이지 않습니다.</p>
       </div>
 
       <!-- Stats tab -->
@@ -414,93 +451,14 @@
       const btn = e.target.closest('button[data-tab]');
       if (!btn) return;
       for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b === btn));
+      btn.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // tabs scroll sideways on narrow screens
       $('tab-papers').hidden = btn.dataset.tab !== 'papers';
       $('tab-content').hidden = btn.dataset.tab !== 'content';
       $('tab-stats').hidden = btn.dataset.tab !== 'stats';
       $('tab-memo').hidden = btn.dataset.tab !== 'memo';
       $('savebar').hidden = btn.dataset.tab !== 'content';
       if (btn.dataset.tab === 'stats' && !statsLoaded) loadStats();
-      if (btn.dataset.tab === 'memo' && !memoLoaded) loadMemo();
-    });
-
-    // ---------- memo ----------
-    // Autosaves after a pause in typing. `memoBase` is the version we last saw; the server
-    // rejects a save built on an older one (409) so two admins can't silently overwrite each other.
-    const memoText = $('memo-text');
-    let memoLoaded = false;
-    let memoBase = '';
-    let memoSaved = '';
-    let memoTimer;
-    let memoSaving = null;
-    let memoConflict = false;
-
-    const memoDirty = () => memoLoaded && !memoConflict && memoText.value !== memoSaved;
-    const timeOf = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }) : '');
-
-    function memoStatus(msg, isError = false) {
-      $('memo-status').textContent = msg;
-      $('memo-status').classList.toggle('err', isError);
-    }
-
-    function applyMemo(m) {
-      memoBase = m.updatedAt;
-      memoSaved = m.text;
-      memoText.value = m.text;
-      memoConflict = false;
-      memoText.disabled = false;
-      $('memo-reload').hidden = true;
-      memoStatus(m.updatedAt ? `마지막 저장: ${timeOf(m.updatedAt)}` : '아직 메모가 없어요.');
-    }
-
-    async function loadMemo() {
-      memoStatus('불러오는 중…');
-      try {
-        applyMemo(await request('/api/memo', 'GET'));
-        memoLoaded = true;
-      } catch (err) {
-        memoStatus(err.message, true);
-      }
-    }
-
-    async function saveMemo() {
-      clearTimeout(memoTimer);
-      if (!memoDirty()) return;
-      if (memoSaving) return memoSaving.then(saveMemo); // one save in flight at a time
-      const text = memoText.value;
-      memoStatus('저장 중…');
-      memoSaving = (async () => {
-        const res = await fetch('/api/memo', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'x-admin-password': encodeURIComponent(password) },
-          body: JSON.stringify({ text, base: memoBase }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 409) {
-          memoConflict = true;
-          $('memo-reload').hidden = false;
-          memoStatus('⚠️ 다른 곳에서 메모가 수정됐어요. 지금 쓴 내용을 복사해 두고 최신 내용을 불러오세요.', true);
-          return;
-        }
-        if (res.status === 401) return logout();
-        if (!res.ok) throw new Error(data.error || `저장하지 못했습니다 (${res.status})`);
-        memoBase = data.updatedAt;
-        memoSaved = text;
-        memoStatus(memoText.value === text ? `저장됨 · ${timeOf(data.updatedAt)}` : '입력 중…');
-      })().catch((err) => memoStatus(err.message, true)).finally(() => { memoSaving = null; });
-      return memoSaving;
-    }
-
-    memoText.addEventListener('input', () => {
-      if (memoConflict) return;
-      memoStatus('입력 중…');
-      clearTimeout(memoTimer);
-      memoTimer = setTimeout(saveMemo, 1000);
-    });
-    memoText.addEventListener('blur', saveMemo);
-    $('memo-reload').addEventListener('click', async () => {
-      if (memoText.value !== memoSaved && !confirm('지금 쓴 내용은 사라집니다. 최신 내용을 불러올까요?')) return;
-      memoLoaded = false;
-      await loadMemo();
+      if (btn.dataset.tab === 'memo' && !memoLoaded) loadMemos();
     });
 
     // ---------- stats ----------
@@ -606,8 +564,7 @@
       f.authors.value = p?.authors ?? '';
       f.date.value = p?.date ?? today();
       f.tags.value = (p?.tags ?? []).join(', ');
-      editor.innerHTML = renderBody(p?.body ?? '');
-      lastRange = null;
+      paperEditor.value = p?.body ?? '';
       f.hidden = false;
       f.scrollIntoView({ behavior: 'smooth', block: 'start' });
       f.title.focus({ preventScroll: true });
@@ -625,175 +582,218 @@
       toast(message);
     }
 
-    // ---------- paper editor ----------
-    // contenteditable editor; saved as plain text with **bold** and ![](url) image lines.
-    const editor = $('editor');
-    let uploading = 0;
-    let lastRange = null;
+    // ---------- rich editor ----------
+    // contenteditable editor shared by papers and memos. Saved as plain text with **bold**,
+    // ![](url) image lines and, when `links` is on, [label](url) links.
+    function createEditor(el, { links = false, onUploading = () => {} } = {}) {
+      let uploading = 0;
+      let lastRange = null;
+      const caretInside = (sel) => sel.rangeCount && el.contains(sel.getRangeAt(0).commonAncestorContainer);
 
-    function serializeEditor() {
-      let out = '';
-      const walk = (node) => {
-        for (const n of node.childNodes) {
-          if (n.nodeType === Node.TEXT_NODE) { out += n.nodeValue; continue; }
-          if (n.nodeType !== Node.ELEMENT_NODE) continue;
-          const tag = n.tagName;
-          if (tag === 'BR') { out += '\n'; continue; }
-          if (tag === 'IMG') {
-            const src = n.getAttribute('src') || '';
-            if (!n.dataset.uploading && /^https?:\/\//.test(src)) {
-              if (out && !out.endsWith('\n')) out += '\n';
-              out += `![](${src})\n`;
+      function serialize() {
+        let out = '';
+        const walk = (node) => {
+          for (const n of node.childNodes) {
+            if (n.nodeType === Node.TEXT_NODE) { out += n.nodeValue; continue; }
+            if (n.nodeType !== Node.ELEMENT_NODE) continue;
+            const tag = n.tagName;
+            if (tag === 'BR') { out += '\n'; continue; }
+            if (tag === 'IMG') {
+              const src = n.getAttribute('src') || '';
+              if (!n.dataset.uploading && /^https?:\/\//.test(src)) {
+                if (out && !out.endsWith('\n')) out += '\n';
+                out += `![](${src})\n`;
+              }
+              continue;
             }
-            continue;
-          }
-          const block = tag === 'DIV' || tag === 'P';
-          if (block && out && !out.endsWith('\n')) out += '\n';
-          if (tag === 'B' || tag === 'STRONG') {
-            const start = out.length;
+            if (tag === 'A' && links && /^https?:\/\//.test(n.getAttribute('href') || '')) {
+              const href = n.getAttribute('href');
+              const label = n.textContent.replace(/[[\]\n]/g, ' ').trim();
+              out += !label || label === href ? href : `[${label}](${href})`;
+              continue;
+            }
+            const block = tag === 'DIV' || tag === 'P';
+            if (block && out && !out.endsWith('\n')) out += '\n';
+            if (tag === 'B' || tag === 'STRONG') {
+              const start = out.length;
+              walk(n);
+              if (out.slice(start).trim()) out = `${out.slice(0, start)}**${out.slice(start)}**`;
+              continue;
+            }
             walk(n);
-            if (out.slice(start).trim()) out = `${out.slice(0, start)}**${out.slice(start)}**`;
-            continue;
+            if (block && !out.endsWith('\n')) out += '\n';
           }
-          walk(n);
-          if (block && !out.endsWith('\n')) out += '\n';
-        }
-      };
-      walk(editor);
-      return out.replace(/\s+$/, '');
-    }
-
-    // Remember the caret so the toolbar button inserts where the user was typing.
-    document.addEventListener('selectionchange', () => {
-      const sel = getSelection();
-      if (sel.rangeCount && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) lastRange = sel.getRangeAt(0).cloneRange();
-    });
-
-    function insertAtCaret(node) {
-      const sel = getSelection();
-      let range = sel.rangeCount && editor.contains(sel.getRangeAt(0).commonAncestorContainer) ? sel.getRangeAt(0) : lastRange;
-      if (!range) {
-        range = document.createRange();
-        range.selectNodeContents(editor);
-        range.collapse(false);
+        };
+        walk(el);
+        return out.replace(/\s+$/, '');
       }
-      range.deleteContents();
-      range.insertNode(node);
-      const after = document.createRange();
-      after.setStartAfter(node);
-      after.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(after);
-      lastRange = after.cloneRange();
-    }
 
-    function setUploading(delta) {
-      uploading += delta;
-      $('paper-form').querySelector('[type=submit]').disabled = uploading > 0;
-    }
+      // Remember the caret so toolbar buttons insert where the user was typing.
+      document.addEventListener('selectionchange', () => {
+        const sel = getSelection();
+        if (caretInside(sel)) lastRange = sel.getRangeAt(0).cloneRange();
+      });
 
-    // Show the photo immediately (local preview), then swap in the uploaded URL.
-    async function insertImages(files) {
-      if (!files.length) return;
-      editor.focus();
-      toast(`사진 ${files.length}장 올리는 중…`);
-      await Promise.all(files.map(async (file) => {
-        const img = document.createElement('img');
-        const local = URL.createObjectURL(file);
-        img.src = local;
-        img.alt = '';
-        img.dataset.uploading = '1';
-        insertAtCaret(img);
-        setUploading(1);
-        try {
-          img.src = await uploadImage(file);
-          delete img.dataset.uploading;
-        } catch (err) {
-          img.remove();
-          toast(err.message, true);
-          throw err;
-        } finally {
-          URL.revokeObjectURL(local);
-          setUploading(-1);
-        }
-      })).then(() => toast('사진을 넣었어요.'), () => {});
-    }
-
-    function clipboardImages(data) {
-      const fromItems = [...(data?.items || [])]
-        .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
-        .map((i) => i.getAsFile())
-        .filter(Boolean);
-      return fromItems.length ? fromItems : imageFiles(data?.files);
-    }
-
-    editor.addEventListener('paste', (e) => {
-      e.preventDefault();
-      const files = clipboardImages(e.clipboardData);
-      if (files.length) return insertImages(files);
-      // Images copied from a web page (no file data): embed their https URLs directly.
-      const html = e.clipboardData.getData('text/html');
-      const urls = html
-        ? [...new DOMParser().parseFromString(html, 'text/html').images].map((i) => i.src).filter((u) => /^https?:\/\//.test(u))
-        : [];
-      const text = e.clipboardData.getData('text/plain');
-      if (urls.length && !text.trim()) {
-        for (const url of urls) {
-          const img = document.createElement('img');
-          img.src = url;
-          img.alt = '';
-          insertAtCaret(img);
-        }
-        return;
-      }
-      document.execCommand('insertText', false, text); // plain text only, no foreign formatting
-    });
-
-    editor.addEventListener('dragover', (e) => {
-      if (![...e.dataTransfer.types].includes('Files')) return;
-      e.preventDefault();
-      editor.classList.add('drag-over');
-    });
-    editor.addEventListener('dragleave', () => editor.classList.remove('drag-over'));
-    editor.addEventListener('drop', (e) => {
-      editor.classList.remove('drag-over');
-      const files = imageFiles(e.dataTransfer.files);
-      if (!files.length) return;
-      e.preventDefault();
-      const pos = document.caretPositionFromPoint?.(e.clientX, e.clientY);
-      const range = pos ? document.createRange() : document.caretRangeFromPoint?.(e.clientX, e.clientY);
-      if (pos) range.setStart(pos.offsetNode, pos.offset);
-      if (range && editor.contains(range.startContainer)) {
-        range.collapse(true);
+      function restoreCaret(range = lastRange) {
+        if (!range) return;
         const sel = getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
       }
-      insertImages(files);
-    });
 
-    $('insert-image').addEventListener('click', async () => {
-      const files = await pickImages(true);
-      if (lastRange) {
+      function insertAtCaret(node) {
         const sel = getSelection();
-        sel.removeAllRanges();
-        sel.addRange(lastRange);
+        let range = caretInside(sel) ? sel.getRangeAt(0) : lastRange;
+        if (!range) {
+          range = document.createRange();
+          range.selectNodeContents(el);
+          range.collapse(false);
+        }
+        range.deleteContents();
+        range.insertNode(node);
+        const after = document.createRange();
+        after.setStartAfter(node);
+        after.collapse(true);
+        restoreCaret(after);
+        lastRange = after.cloneRange();
       }
-      insertImages(files);
-    });
 
-    $('bold-btn').addEventListener('mousedown', (e) => e.preventDefault()); // keep the selection
-    $('bold-btn').addEventListener('click', () => {
-      editor.focus();
-      document.execCommand('bold');
+      function setUploading(delta) {
+        uploading += delta;
+        onUploading(uploading > 0);
+      }
+
+      // Show the photo immediately (local preview), then swap in the uploaded URL.
+      async function insertImages(files) {
+        if (!files.length) return;
+        el.focus();
+        toast(`사진 ${files.length}장 올리는 중…`);
+        await Promise.all(files.map(async (file) => {
+          const img = document.createElement('img');
+          const local = URL.createObjectURL(file);
+          img.src = local;
+          img.alt = '';
+          img.dataset.uploading = '1';
+          insertAtCaret(img);
+          setUploading(1);
+          try {
+            img.src = await uploadImage(file);
+            delete img.dataset.uploading;
+          } catch (err) {
+            img.remove();
+            toast(err.message, true);
+            throw err;
+          } finally {
+            URL.revokeObjectURL(local);
+            setUploading(-1);
+          }
+        })).then(() => toast('사진을 넣었어요.'), () => {});
+      }
+
+      function clipboardImages(data) {
+        const fromItems = [...(data?.items || [])]
+          .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+          .map((i) => i.getAsFile())
+          .filter(Boolean);
+        return fromItems.length ? fromItems : imageFiles(data?.files);
+      }
+
+      el.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const files = clipboardImages(e.clipboardData);
+        if (files.length) return insertImages(files);
+        // Images copied from a web page (no file data): embed their https URLs directly.
+        const html = e.clipboardData.getData('text/html');
+        const urls = html
+          ? [...new DOMParser().parseFromString(html, 'text/html').images].map((i) => i.src).filter((u) => /^https?:\/\//.test(u))
+          : [];
+        const text = e.clipboardData.getData('text/plain');
+        if (urls.length && !text.trim()) {
+          for (const url of urls) {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = '';
+            insertAtCaret(img);
+          }
+          return;
+        }
+        document.execCommand('insertText', false, text); // plain text only, no foreign formatting
+      });
+
+      el.addEventListener('dragover', (e) => {
+        if (![...e.dataTransfer.types].includes('Files')) return;
+        e.preventDefault();
+        el.classList.add('drag-over');
+      });
+      el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+      el.addEventListener('drop', (e) => {
+        el.classList.remove('drag-over');
+        const files = imageFiles(e.dataTransfer.files);
+        if (!files.length) return;
+        e.preventDefault();
+        const pos = document.caretPositionFromPoint?.(e.clientX, e.clientY);
+        const range = pos ? document.createRange() : document.caretRangeFromPoint?.(e.clientX, e.clientY);
+        if (pos) range.setStart(pos.offsetNode, pos.offset);
+        if (range && el.contains(range.startContainer)) {
+          range.collapse(true);
+          restoreCaret(range);
+        }
+        insertImages(files);
+      });
+
+      return {
+        get value() { return serialize(); },
+        set value(text) {
+          el.innerHTML = renderBody(text, { links });
+          lastRange = null;
+        },
+        get uploading() { return uploading > 0; },
+        async addImages() {
+          const files = await pickImages(true);
+          restoreCaret();
+          insertImages(files);
+        },
+        bold() {
+          el.focus();
+          document.execCommand('bold');
+        },
+        // Selected text becomes the link label; with nothing selected the URL itself is inserted.
+        addLink() {
+          const sel = getSelection();
+          const range = caretInside(sel) ? sel.getRangeAt(0).cloneRange() : lastRange?.cloneRange();
+          const label = range && !range.collapsed ? range.toString().trim() : '';
+          let url = prompt(label ? `"${label}"에 연결할 주소를 입력하세요.` : '링크 주소를 입력하세요.', 'https://');
+          if (url === null) return;
+          url = url.trim();
+          if (url && !/^[a-z][\w+.-]*:/i.test(url)) url = `https://${url}`;
+          if (!/^https?:\/\/\S+\.\S+$/i.test(url)) return toast('http(s):// 로 시작하는 주소만 넣을 수 있어요.', true);
+          el.focus();
+          if (range) restoreCaret(range);
+          const a = document.createElement('a');
+          a.href = url;
+          a.textContent = label || url;
+          insertAtCaret(a);
+        },
+      };
+    }
+
+    // Keep the editor's selection when a toolbar button is pressed.
+    const keepSelection = (btn) => btn.addEventListener('mousedown', (e) => e.preventDefault());
+
+    // ---------- paper editor ----------
+    const paperEditor = createEditor($('editor'), {
+      onUploading: (busy) => { $('paper-form').querySelector('[type=submit]').disabled = busy; },
     });
+    $('insert-image').addEventListener('click', () => paperEditor.addImages());
+    keepSelection($('bold-btn'));
+    $('bold-btn').addEventListener('click', () => paperEditor.bold());
 
     $('paper-new').addEventListener('click', () => openPaperForm(null));
     $('paper-cancel').addEventListener('click', closePaperForm);
 
     $('paper-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요.');
+      if (paperEditor.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요.');
       const f = e.target;
       const post = {
         id: editingId || newId(),
@@ -801,7 +801,7 @@
         authors: f.authors.value.trim(),
         date: f.date.value,
         tags: f.tags.value.split(',').map((t) => t.trim()).filter(Boolean),
-        body: serializeEditor(),
+        body: paperEditor.value,
       };
       const next = editingId ? papers.map((p) => (p.id === editingId ? post : p)) : [post, ...papers];
       const submit = f.querySelector('[type=submit]');
@@ -831,6 +831,151 @@
         }
       }
     });
+
+    // ---------- memo board ----------
+    // Admin-only posts. Each save carries the version it was based on; if someone else saved
+    // the same post in between, the server answers 409 and we ask before overwriting.
+    const AUTHOR_KEY = 'hai-memo-author';
+    const memoForm = $('memo-form');
+    const memoEditor = createEditor($('memo-editor'), {
+      links: true,
+      onUploading: (busy) => { memoForm.querySelector('[type=submit]').disabled = busy; },
+    });
+    let memos = [];
+    let memoLoaded = false;
+    let memoEditing = null; // { id, version } while editing an existing post
+    let memoInitial = '';
+
+    const memoSnapshot = () => JSON.stringify([memoForm.title.value, memoForm.author.value, memoEditor.value]);
+    const memoDirty = () => !memoForm.hidden && memoSnapshot() !== memoInitial;
+    const timeOf = (ms) => new Date(ms).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
+
+    function renderMemos() {
+      $('memo-count').textContent = memoLoaded ? `총 ${memos.length}개` : '';
+      $('memo-list').innerHTML = memos.length
+        ? memos.map((m) => `
+          <article class="memo">
+            <header class="memo-head">
+              <div class="memo-info">
+                ${m.title ? `<h4>${esc(m.title)}</h4>` : ''}
+                <div class="meta">${esc(m.author || '익명')} · ${timeOf(m.createdAt)}${m.updatedAt > m.createdAt ? ` · 수정됨 ${timeOf(m.updatedAt)}` : ''}</div>
+              </div>
+              <div class="actions">
+                <button class="btn" type="button" data-memo-edit="${esc(m.id)}">수정</button>
+                <button class="btn danger" type="button" data-memo-del="${esc(m.id)}">삭제</button>
+              </div>
+            </header>
+            ${m.body ? `<div class="memo-body">${renderBody(m.body, { links: true })}</div>` : ''}
+          </article>`).join('')
+        : '<div class="empty">아직 메모가 없어요. 첫 메모를 남겨보세요.</div>';
+    }
+
+    async function loadMemos() {
+      $('memo-count').textContent = '불러오는 중…';
+      try {
+        ({ memos } = await request('/api/memo', 'GET'));
+        memoLoaded = true;
+        renderMemos();
+      } catch (err) {
+        $('memo-count').textContent = '';
+        $('memo-list').innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+      }
+    }
+
+    function openMemoForm(m) {
+      if (memoDirty() && !confirm('작성 중인 메모가 사라집니다. 계속할까요?')) return;
+      memoEditing = m ? { id: m.id, version: m.version } : null;
+      $('memo-form-title').textContent = m ? '메모 수정' : '새 메모';
+      memoForm.title.value = m?.title ?? '';
+      let author = m?.author ?? '';
+      if (!m) try { author = localStorage.getItem(AUTHOR_KEY) || ''; } catch {}
+      memoForm.author.value = author;
+      memoEditor.value = m?.body ?? '';
+      memoInitial = memoSnapshot();
+      memoForm.hidden = false;
+      memoForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      (m || author ? $('memo-editor') : memoForm.author).focus({ preventScroll: true });
+    }
+
+    function closeMemoForm() {
+      memoForm.hidden = true;
+      memoEditing = null;
+    }
+
+    async function sendMemo(method, body) {
+      const res = await fetch('/api/memo', {
+        method,
+        headers: { 'Content-Type': 'application/json', 'x-admin-password': encodeURIComponent(password) },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) logout();
+      return { status: res.status, data };
+    }
+
+    memoForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (memoEditor.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요.');
+      const post = { title: memoForm.title.value.trim(), author: memoForm.author.value.trim(), body: memoEditor.value };
+      if (!post.title && !post.body.trim()) return toast('제목이나 내용을 입력해 주세요.', true);
+      try { localStorage.setItem(AUTHOR_KEY, post.author); } catch {}
+
+      const submit = memoForm.querySelector('[type=submit]');
+      submit.disabled = true;
+      try {
+        let { status, data } = memoEditing
+          ? await sendMemo('PUT', { ...post, id: memoEditing.id, version: memoEditing.version })
+          : await sendMemo('POST', post);
+        if (status === 409) {
+          if (!confirm('그 사이 다른 곳에서 이 메모가 수정됐어요.\n내가 쓴 내용으로 덮어쓸까요? (취소하면 계속 편집할 수 있어요)')) return;
+          ({ status, data } = await sendMemo('PUT', { ...post, id: memoEditing.id, version: data.current.version }));
+        }
+        if (status === 404) {
+          if (!confirm('이미 삭제된 메모예요. 새 메모로 저장할까요?')) return;
+          ({ status, data } = await sendMemo('POST', post));
+        }
+        if (status >= 400) throw new Error(data.error || `저장하지 못했습니다 (${status})`);
+        memos = [data.memo, ...memos.filter((m) => m.id !== data.memo.id)].sort((a, b) => b.createdAt - a.createdAt);
+        toast(memoEditing ? '수정했습니다.' : '메모를 남겼어요.');
+        closeMemoForm();
+        renderMemos();
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        submit.disabled = memoEditor.uploading;
+      }
+    });
+
+    $('memo-list').addEventListener('click', async (e) => {
+      const img = e.target.closest('.memo-body img');
+      if (img) return window.open(img.src, '_blank', 'noopener');
+      const edit = e.target.closest('[data-memo-edit]');
+      if (edit) return openMemoForm(memos.find((m) => m.id === edit.dataset.memoEdit));
+      const del = e.target.closest('[data-memo-del]');
+      if (!del) return;
+      const m = memos.find((x) => x.id === del.dataset.memoDel);
+      if (!m || !confirm(`${m.title ? `"${m.title}" ` : ''}메모를 삭제할까요?`)) return;
+      try {
+        await request(`/api/memo?id=${encodeURIComponent(m.id)}`, 'DELETE');
+        memos = memos.filter((x) => x.id !== m.id);
+        if (memoEditing?.id === m.id) closeMemoForm();
+        renderMemos();
+        toast('삭제했습니다.');
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+
+    $('memo-new').addEventListener('click', () => openMemoForm(null));
+    $('memo-refresh').addEventListener('click', loadMemos);
+    $('memo-cancel').addEventListener('click', () => {
+      if (memoDirty() && !confirm('작성 중인 내용을 버릴까요?')) return;
+      closeMemoForm();
+    });
+    for (const id of ['memo-bold', 'memo-link', 'memo-image']) keepSelection($(id));
+    $('memo-bold').addEventListener('click', () => memoEditor.bold());
+    $('memo-link').addEventListener('click', () => memoEditor.addLink());
+    $('memo-image').addEventListener('click', () => memoEditor.addImages());
 
     // ---------- content form ----------
     // Each input carries data-path (e.g. "members.0.name"); edits write straight into `content`.

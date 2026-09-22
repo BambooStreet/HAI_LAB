@@ -1,32 +1,33 @@
-// Admin-only scratch memo. Kept out of /api/data because that endpoint is publicly readable.
-import { getJSON, setJSON } from './_lib/store.js';
+// Admin-only memo board. Kept out of /api/data because that endpoint is publicly readable.
 import { send, isAdmin, readBody } from './_lib/http.js';
-
-const MEMO_KEY = 'hai:memo';
-const EMPTY = { text: '', updatedAt: '' };
+import { listMemos, createMemo, updateMemo, deleteMemo, cleanMemo } from './_lib/memos.js';
 
 export default async function handler(req, res) {
   try {
     if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
 
-    if (req.method === 'GET') {
-      return send(res, 200, { ...EMPTY, ...((await getJSON(MEMO_KEY)) || {}) });
-    }
+    if (req.method === 'GET') return send(res, 200, { memos: await listMemos() });
 
-    if (req.method === 'PUT') {
+    if (req.method === 'POST' || req.method === 'PUT') {
       const body = readBody(req);
-      if (typeof body.text !== 'string') return send(res, 400, { error: '메모 내용이 없습니다.' });
-      // Optimistic check: refuse to overwrite a version the client never saw (another admin saved meanwhile).
-      const current = { ...EMPTY, ...((await getJSON(MEMO_KEY)) || {}) };
-      if ((body.base ?? '') !== current.updatedAt) {
-        return send(res, 409, { error: '다른 곳에서 메모가 수정되었습니다.', current });
-      }
-      const next = { text: body.text.slice(0, 100000), updatedAt: new Date().toISOString() };
-      await setJSON(MEMO_KEY, next);
-      return send(res, 200, next);
+      const m = cleanMemo(body);
+      if (!m.title && !m.body.trim()) return send(res, 400, { error: '제목이나 내용을 입력해 주세요.' });
+      if (req.method === 'POST') return send(res, 200, { memo: await createMemo(m) });
+
+      const result = await updateMemo(String(body.id ?? ''), Number(body.version), m);
+      if (result.missing) return send(res, 404, { error: '이미 삭제된 글입니다.' });
+      if (result.conflict) return send(res, 409, { error: '다른 곳에서 이 글이 수정되었습니다.', current: result.conflict });
+      return send(res, 200, { memo: result });
     }
 
-    res.setHeader('Allow', 'GET, PUT');
+    if (req.method === 'DELETE') {
+      const id = new URL(req.url, 'http://x').searchParams.get('id');
+      if (!id) return send(res, 400, { error: 'id가 없습니다.' });
+      await deleteMemo(id);
+      return send(res, 200, { ok: true });
+    }
+
+    res.setHeader('Allow', 'GET, POST, PUT, DELETE');
     return send(res, 405, { error: 'Method not allowed' });
   } catch (err) {
     if (err.message === 'NO_DB') {

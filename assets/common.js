@@ -24,8 +24,34 @@ export function safeUrl(url, schemes = ['http:', 'https:', 'mailto:', 'tel:']) {
 // Paper body: **bold** plus ![caption](https://...) images.
 const IMAGE_RE = /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)/g;
 
-export function renderBody(text) {
-  return rich(text).replace(IMAGE_RE, (_, alt, url) => `<img class="body-img" src="${url}" alt="${alt}" loading="lazy" />`);
+// With { links: true }, also [label](https://...) links and bare https:// URLs, in one pass so an
+// image's URL is never re-linked. Runs on already-escaped text, so URLs stop at escaped quotes/brackets.
+// ASCII only, so Korean right after a URL ("https://a.com에서") stays out of the link.
+const URL_CHARS = String.raw`(?:(?!&lt;|&gt;|&quot;|&#39;)[\w\-.~:/?#@!$&*+,;=%()])+`;
+const LINKED_RE = new RegExp(String.raw`(!?)\[([^\]\n]*)\]\((https?:\/\/[^\s)<]+)\)|(https?:\/\/${URL_CHARS})`, 'g');
+
+const link = (url, label) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+
+export function renderBody(text, { links = false } = {}) {
+  if (!links) {
+    return rich(text).replace(IMAGE_RE, (_, alt, url) => `<img class="body-img" src="${url}" alt="${alt}" loading="lazy" />`);
+  }
+  return rich(text).replace(LINKED_RE, (_, bang, label, url, bare) => {
+    if (bare) {
+      // "see https://x.com." / "(https://x.com)" → keep trailing punctuation and unmatched ")" outside.
+      let href = bare;
+      let trail = '';
+      const count = (c) => href.split(c).length - 1;
+      while (/[.,!?;:]$/.test(href) || (href.endsWith(')') && count(')') > count('('))) {
+        trail = href.slice(-1) + trail;
+        href = href.slice(0, -1);
+      }
+      return link(href, href) + trail;
+    }
+    return bang
+      ? `<img class="body-img" src="${url}" alt="${label}" loading="lazy" />`
+      : link(url, label || url);
+  });
 }
 
 export function firstImage(text) {
