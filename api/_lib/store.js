@@ -20,22 +20,37 @@ export const hasBlob = Boolean(blobToken || process.env.BLOB_STORE_ID);
 // Local dev without a database falls back to memory; on Vercel that would silently lose data, so it errors instead.
 const memory = new Map();
 
+// The Neon client, shared by every module that needs SQL. Each module creates its own tables via once().
 let sqlPromise;
-function db() {
+export function sql() {
   sqlPromise ??= (async () => {
     const { neon } = await import('@neondatabase/serverless');
-    const sql = neon(DATABASE_URL);
-    await sql`CREATE TABLE IF NOT EXISTS hai_kv (
-      key text PRIMARY KEY,
-      value jsonb NOT NULL,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    )`;
-    return sql;
+    return neon(DATABASE_URL);
   })().catch((err) => {
     sqlPromise = undefined;
     throw err;
   });
   return sqlPromise;
+}
+
+// Runs setup (a CREATE TABLE IF NOT EXISTS) once per lambda instance, retrying on failure.
+export function once(state, setup) {
+  state.promise ??= setup().catch((err) => {
+    state.promise = undefined;
+    throw err;
+  });
+  return state.promise;
+}
+
+const kv = {};
+async function db() {
+  const q = await sql();
+  await once(kv, () => q`CREATE TABLE IF NOT EXISTS hai_kv (
+    key text PRIMARY KEY,
+    value jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  return q;
 }
 
 export async function getJSON(key) {

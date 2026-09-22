@@ -28,6 +28,7 @@ export function isAdmin(req) {
 }
 
 export function readBody(req) {
+  if (Buffer.isBuffer(req.body)) return req.body.length ? JSON.parse(req.body.toString('utf8')) : {};
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') return JSON.parse(req.body);
   return {};

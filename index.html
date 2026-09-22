@@ -236,6 +236,24 @@
       return src ? `<img src="${esc(src)}" alt="" loading="lazy" />` : esc(emoji);
     };
 
+    // ---------- visit counter ----------
+    // One hit per page view; the first hit of the day also counts as a unique visitor.
+    // Nothing identifying is stored — just the date of this browser's last visit.
+    const VISIT_KEY = 'hai-visit-day';
+    function ping(type, id) {
+      let newVisitor = false;
+      try {
+        const day = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+        newVisitor = localStorage.getItem(VISIT_KEY) !== day;
+        if (newVisitor) localStorage.setItem(VISIT_KEY, day);
+      } catch {}
+      const body = JSON.stringify({ type, id, newVisitor });
+      try {
+        if (navigator.sendBeacon?.('/api/stats', new Blob([body], { type: 'application/json' }))) return;
+      } catch {}
+      fetch('/api/stats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    }
+
     function renderContent(c) {
       $('hero-subtitle').textContent = c.hero.subtitle;
       $('critters').innerHTML = [...c.hero.critters.split(/\s+/).filter(Boolean)]
@@ -310,6 +328,7 @@
       history.replaceState(null, '', `#paper-${encodeURIComponent(id)}`);
       if (!dialog.open) dialog.showModal();
       dialog.scrollTop = 0;
+      ping('paper', id);
     }
 
     $('paper-list').addEventListener('click', (e) => {
@@ -320,6 +339,8 @@
     $('dialog-close').addEventListener('click', () => dialog.close());
     dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
     dialog.addEventListener('close', () => history.replaceState(null, '', '#papers'));
+
+    ping('home');
 
     try {
       const res = await fetch('/api/data', { cache: 'no-store' });
