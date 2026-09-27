@@ -6,7 +6,7 @@
 import { send, isAdmin, readBody } from './_lib/http.js';
 import {
   listMemos, createMemo, updateMemo, deleteMemo, cleanMemo,
-  addComment, deleteComment, cleanComment, setLike, CLIENT_RE,
+  addComment, deleteComment, cleanComment, setLike, CLIENT_RE, strayRows, emptyMemos,
 } from './_lib/memos.js';
 
 const GONE = '이미 삭제된 글입니다.';
@@ -17,6 +17,13 @@ export default async function handler(req, res) {
     const query = new URL(req.url, 'http://x').searchParams;
     const rawClient = req.headers['x-client-id'];
     const client = typeof rawClient === 'string' && CLIENT_RE.test(rawClient) ? rawClient : '';
+
+    // Housekeeping for the settings tab: GET reports, DELETE clears only the stray rows.
+    if (query.get('action') === 'tidy' && (req.method === 'GET' || req.method === 'DELETE')) {
+      const remove = req.method === 'DELETE';
+      const [stray, empty] = await Promise.all([strayRows(remove), emptyMemos()]);
+      return send(res, 200, { stray, emptyMemos: empty, cleaned: remove });
+    }
 
     if (req.method === 'GET') return send(res, 200, { memos: await listMemos(client) });
 

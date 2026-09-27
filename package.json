@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "node dev-server.js",
-    "dev:live": "node --env-file=.env.local dev-server.js"
+    "dev:live": "node --env-file=.env.local dev-server.js",
+    "test": "node test/smoke.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

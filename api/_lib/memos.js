@@ -242,6 +242,41 @@ export async function addComment(memoId, body, parentId = '') {
 }
 
 // Deleting a comment also deletes its replies.
+// Comments and likes whose post is gone. Deleting a post takes its own along, so these only turn
+// up after an older bug or a manual row delete — and nothing else can reference them.
+export async function strayRows(remove = false) {
+  requireStore();
+  if (!hasDb) {
+    const live = new Set(memory.keys());
+    const comments = [...memComments.values()].filter((c) => !live.has(c.memo_id));
+    const likes = [...memLikes].filter((k) => !live.has(k.split('\n')[0]));
+    if (remove) {
+      for (const c of comments) memComments.delete(c.id);
+      for (const k of likes) memLikes.delete(k);
+    }
+    return { comments: comments.length, likes: likes.length };
+  }
+  const q = await db();
+  if (remove) {
+    await q`DELETE FROM hai_memo_comments WHERE memo_id NOT IN (SELECT id FROM hai_memos)`;
+    await q`DELETE FROM hai_memo_likes WHERE memo_id NOT IN (SELECT id FROM hai_memos)`;
+    return { comments: 0, likes: 0, cleaned: true };
+  }
+  const [[c], [l]] = await Promise.all([
+    q`SELECT count(*)::int AS n FROM hai_memo_comments WHERE memo_id NOT IN (SELECT id FROM hai_memos)`,
+    q`SELECT count(*)::int AS n FROM hai_memo_likes WHERE memo_id NOT IN (SELECT id FROM hai_memos)`,
+  ]);
+  return { comments: Number(c.n), likes: Number(l.n) };
+}
+
+// Posts with no photo, no video and no text — nothing to show. Reported only; deleting a post
+// stays a decision for a person.
+export async function emptyMemos() {
+  requireStore();
+  return (await listMemos()).filter((m) => !m.title.trim() && !m.body.trim())
+    .map((m) => ({ id: m.id, createdAt: m.createdAt }));
+}
+
 export async function deleteComment(id) {
   requireStore();
   if (!hasDb) {

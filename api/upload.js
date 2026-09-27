@@ -92,6 +92,22 @@ async function findOrphans() {
   const fresh = Date.now() - KEEP_RECENT_MS;
   const orphans = blobs.filter((b) => !shown.includes(b.pathname) && new Date(b.uploadedAt).getTime() < fresh);
   const size = (rows) => rows.reduce((n, b) => n + b.size, 0);
+  const file = (b) => ({ pathname: b.pathname, size: b.size, uploadedAt: b.uploadedAt });
+
+  // Links in posts whose file is gone (deleted from the Blob dashboard, say): reported, never
+  // "fixed" automatically, since only a person can tell what the post was meant to show.
+  const have = new Set(blobs.map((b) => b.pathname));
+  const missing = [...new Set([...shown.matchAll(/hai\/[\w.-]+/g)].map((m) => m[0]))].filter((p) => !have.has(p));
+
+  // Same size and extension usually means the same file uploaded twice. Only ever reported:
+  // telling them apart for real would mean downloading both, which costs transfer.
+  const groups = new Map();
+  for (const b of blobs) {
+    const key = `${b.size}|${b.pathname.split('.').pop()}`;
+    groups.set(key, [...(groups.get(key) ?? []), b]);
+  }
+  const maybeDuplicates = [...groups.values()].filter((g) => g.length > 1).map((g) => g.map(file));
+
   return {
     orphans,
     summary: {
@@ -99,7 +115,9 @@ async function findOrphans() {
       totalBytes: size(blobs),
       unused: orphans.length,
       unusedBytes: size(orphans),
-      files: orphans.map((b) => ({ pathname: b.pathname, size: b.size, uploadedAt: b.uploadedAt })),
+      files: orphans.map(file),
+      missing,
+      maybeDuplicates,
     },
   };
 }

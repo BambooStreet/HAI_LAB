@@ -178,6 +178,14 @@
     .stat-table td:last-child, .stat-table th:last-child { text-align: right; width: 5.5em; font-variant-numeric: tabular-nums; }
     .stat-table .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; }
 
+    /* Settings */
+    .memo-status { color: var(--muted); font-size: 0.85rem; margin-bottom: 4px; }
+    .memo-status.err { color: var(--danger); }
+    .gauge { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-bottom: 8px; }
+    .gauge i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+    .gauge.warn i { background: #e0b35c; }
+    .gauge.full i { background: var(--danger); }
+
     /* Memo board */
     .memo-list { display: grid; gap: 12px; }
     .memo { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
@@ -330,6 +338,7 @@
         <button role="tab" data-tab="content" aria-selected="false">🏠 홈페이지 내용</button>
         <button role="tab" data-tab="papers" aria-selected="false">📄 Papers</button>
         <button role="tab" data-tab="stats" aria-selected="false">📊 방문자 통계</button>
+        <button role="tab" data-tab="settings" aria-selected="false">⚙️ 설정</button>
       </div>
 
       <!-- Memo tab -->
@@ -369,14 +378,29 @@
         </div>
         <div id="stats-body"></div>
 
+      </div>
+
+      <!-- Settings tab -->
+      <div id="tab-settings" hidden>
         <div class="card">
-          <h3>🗂 저장소 정리</h3>
-          <p class="hint">어느 글에서도 쓰지 않는 사진·동영상을 찾아서 지웁니다. 올린 지 1시간이 안 된 파일은 건드리지 않아요.</p>
+          <h3>💾 저장 공간</h3>
+          <p class="hint">무료 요금제는 저장 1GB까지입니다. 넘기면 요금이 붙는 대신 사진·동영상이 한 달 동안 안 보이게 되니 미리 정리해 주세요.</p>
+          <div id="storage-usage"><p class="memo-status">확인하려면 아래 버튼을 눌러주세요.</p></div>
           <div class="form-actions" style="justify-content: flex-start">
-            <button class="btn" type="button" id="storage-scan">안 쓰는 파일 찾기</button>
-            <button class="btn danger" type="button" id="storage-clean" hidden>지우기</button>
+            <button class="btn" type="button" id="storage-scan">저장소 점검</button>
+            <button class="btn danger" type="button" id="storage-clean" hidden>안 쓰는 파일 지우기</button>
           </div>
           <div id="storage-result"></div>
+        </div>
+
+        <div class="card">
+          <h3>🧹 데이터 점검</h3>
+          <p class="hint">삭제된 글에 남은 댓글·좋아요처럼 확실히 필요 없는 것만 지웁니다. 글과 사진은 건드리지 않고, 확인이 필요한 것은 목록으로만 알려드려요.</p>
+          <div class="form-actions" style="justify-content: flex-start">
+            <button class="btn" type="button" id="tidy-scan">데이터 점검</button>
+            <button class="btn danger" type="button" id="tidy-clean" hidden>남은 기록 지우기</button>
+          </div>
+          <div id="tidy-result"></div>
         </div>
       </div>
 
@@ -627,6 +651,7 @@
       $('tab-papers').hidden = btn.dataset.tab !== 'papers';
       $('tab-content').hidden = btn.dataset.tab !== 'content';
       $('tab-stats').hidden = btn.dataset.tab !== 'stats';
+      $('tab-settings').hidden = btn.dataset.tab !== 'settings';
       $('tab-memo').hidden = btn.dataset.tab !== 'memo';
       $('savebar').hidden = btn.dataset.tab !== 'content';
       if (btn.dataset.tab === 'stats' && !statsLoaded) loadStats();
@@ -709,18 +734,65 @@
     // ---------- storage cleanup ----------
     const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 
+    const FREE_LIMIT = 1024 * 1024 * 1024; // Vercel Blob's free tier
+    const fileRows = (files) => `<table class="stat-table"><tbody>${files.map((f) => `
+      <tr><td class="name">${esc(String(f.pathname ?? f).replace('hai/', ''))}</td>
+          <td>${f.size == null ? '' : mb(f.size)}</td></tr>`).join('')}</tbody></table>`;
+
     function renderStorage(s, cleaned = false) {
+      const used = Math.min(100, Math.round((s.totalBytes / FREE_LIMIT) * 100));
+      const level = used >= 90 ? 'full' : used >= 70 ? 'warn' : '';
+      $('storage-usage').innerHTML = `
+        <div class="gauge ${level}"><i style="width:${used}%"></i></div>
+        <p class="memo-status${level ? ' err' : ''}">
+          ${mb(s.totalBytes)} / 1GB 사용 (${used}%) · 파일 ${s.total}개
+          ${used >= 90 ? ' — 곧 한도예요. 안 쓰는 파일부터 지워주세요.'
+            : used >= 70 ? ' — 여유가 줄고 있어요.' : ''}
+        </p>`;
+
       $('storage-clean').hidden = cleaned || !s.unused;
       $('storage-result').innerHTML = `
-        <p class="memo-status">전체 ${s.total}개 · ${mb(s.totalBytes)} 사용 중</p>
         <p class="memo-status${s.unused && !cleaned ? ' err' : ''}">
           ${cleaned ? `${s.deleted}개를 지웠어요 (${mb(s.unusedBytes)} 확보).`
-            : s.unused ? `안 쓰는 파일 ${s.unused}개 · ${mb(s.unusedBytes)}` : '안 쓰는 파일이 없어요.'}
+            : s.unused ? `어느 글에서도 쓰지 않는 파일 ${s.unused}개 · ${mb(s.unusedBytes)}` : '안 쓰는 파일이 없어요.'}
         </p>
-        ${s.unused && !cleaned ? `<table class="stat-table"><tbody>${s.files.map((f) => `
-          <tr><td class="name">${esc(f.pathname.replace('hai/', ''))}</td>
-              <td>${mb(f.size)}</td></tr>`).join('')}</tbody></table>` : ''}`;
+        ${s.unused && !cleaned ? fileRows(s.files) : ''}
+        ${s.missing?.length ? `<p class="memo-status err">⚠️ 글에는 있는데 파일이 없는 것 ${s.missing.length}개 — 글을 고치거나 다시 올려주세요.</p>${fileRows(s.missing)}` : ''}
+        ${s.maybeDuplicates?.length ? `<p class="memo-status">같은 파일일 수 있는 묶음 ${s.maybeDuplicates.length}개 (크기·형식이 같음). 확인 후 필요 없는 쪽만 글에서 빼주세요.</p>
+          ${s.maybeDuplicates.map(fileRows).join('')}` : ''}`;
     }
+
+    function renderTidy(t) {
+      const left = t.stray.comments + t.stray.likes;
+      $('tidy-clean').hidden = t.cleaned || !left;
+      $('tidy-result').innerHTML = `
+        <p class="memo-status${left && !t.cleaned ? ' err' : ''}">
+          ${t.cleaned ? '남은 기록을 정리했어요.'
+            : left ? `지워진 글에 남은 댓글 ${t.stray.comments}개 · 좋아요 ${t.stray.likes}개`
+            : '정리할 기록이 없어요.'}
+        </p>
+        ${t.emptyMemos.length ? `<p class="memo-status">내용이 비어 있는 메모 ${t.emptyMemos.length}개 — 메모장 탭에서 직접 확인하고 지워주세요.</p>` : ''}`;
+    }
+
+    async function tidyAction(method) {
+      const buttons = [$('tidy-scan'), $('tidy-clean')];
+      for (const b of buttons) b.disabled = true;
+      $('tidy-result').innerHTML = '<p class="memo-status">확인하는 중…</p>';
+      try {
+        renderTidy(await request('/api/memo?action=tidy', method));
+      } catch (err) {
+        $('tidy-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>`;
+      } finally {
+        for (const b of buttons) b.disabled = false;
+      }
+    }
+
+    $('tidy-scan').addEventListener('click', () => tidyAction('GET'));
+    $('tidy-clean').addEventListener('click', () => {
+      if (confirm('지워진 글에 남은 댓글·좋아요 기록만 지웁니다. 글과 사진은 그대로예요. 계속할까요?')) {
+        tidyAction('DELETE');
+      }
+    });
 
     async function storageAction(method, cleaned) {
       const buttons = [$('storage-scan'), $('storage-clean')];
@@ -1362,7 +1434,7 @@
           <header class="memo-head">
             <div class="memo-info">
               ${m.title ? `<h4>${esc(m.title)}</h4>` : ''}
-              <div class="meta">${timeOf(m.createdAt)}${m.updatedAt > m.createdAt ? ` · 수정됨 ${timeOf(m.updatedAt)}` : ''}</div>
+              <div class="meta">${timeOf(m.createdAt)}</div>
             </div>
             <div class="actions">
               <button class="btn" type="button" data-memo-edit="${esc(m.id)}">수정</button>
