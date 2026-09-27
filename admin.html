@@ -532,6 +532,8 @@
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', file.type);
+        // Only our own server gets the password; a storage URL must never see it.
+        if (uploadUrl.startsWith('/')) xhr.setRequestHeader('x-admin-password', encodeURIComponent(password));
         xhr.upload.addEventListener('progress', (e) => e.lengthComputable && onProgress?.(e.loaded / e.total));
         xhr.addEventListener('load', () => (xhr.status < 300
           ? resolve(xhr.responseText)

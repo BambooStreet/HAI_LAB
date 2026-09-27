@@ -16,6 +16,16 @@ const VIDEO_MAX_BYTES = 300 * 1024 * 1024;
 const MAX_BYTES = 4 * 1024 * 1024; // Vercel functions reject bodies over 4.5 MB
 const LOCAL_DIR = join(tmpdir(), 'hai-lab-uploads');
 
+// Uploads while developing go to a temp folder and are served back from it, so photos and videos
+// can be tested without a Blob store (Blob only authorizes deployments).
+const isLocal = !process.env.VERCEL;
+
+async function saveLocally(req, name, buffer) {
+  await mkdir(LOCAL_DIR, { recursive: true });
+  await writeFile(join(LOCAL_DIR, name), buffer);
+  return `http://${req.headers.host}/api/upload?file=${name}`;
+}
+
 // A read-write token looks like vercel_blob_rw_<storeId>_<secret>; the public URL needs the store id
 // without the "store_" prefix that BLOB_STORE_ID carries (that prefix makes the host 400).
 const storeId = () => (process.env.BLOB_STORE_ID || blobToken.split('_')[3] || '').replace(/^store_/, '');
@@ -29,12 +39,10 @@ async function presignVideo(req, res) {
   if (size > VIDEO_MAX_BYTES) {
     return send(res, 413, { error: `동영상이 너무 커요 (최대 ${VIDEO_MAX_BYTES / 1024 / 1024}MB).` });
   }
+  // Local dev keeps files in a temp folder: Blob refuses OIDC outside a deployment anyway.
+  if (isLocal) return send(res, 200, { uploadUrl: `/api/upload?video=direct&ext=${ext}`, url: '' });
   if (!hasBlob) {
-    return send(res, 503, {
-      error: process.env.VERCEL
-        ? '동영상 저장소가 연결되지 않았습니다. Vercel 프로젝트에 Blob을 연결해 주세요.'
-        : '동영상 업로드는 배포된 사이트에서만 됩니다 (로컬에는 Blob 저장소가 없어요).',
-    });
+    return send(res, 503, { error: '동영상 저장소가 연결되지 않았습니다. Vercel 프로젝트에 Blob을 연결해 주세요.' });
   }
 
   const pathname = `hai/${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
@@ -114,11 +122,22 @@ export default async function handler(req, res) {
     }
   }
 
+  // Local dev only: take a video straight into the temp folder (no 4.5MB function limit here).
+  if (req.method === 'PUT' && isLocal && params.get('video') === 'direct') {
+    if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
+    const ext = Object.values(VIDEO_TYPES).includes(params.get('ext')) ? params.get('ext') : 'mp4';
+    const buffer = await readBuffer(req);
+    if (!buffer.length) return send(res, 400, { error: '빈 파일입니다.' });
+    const name = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
+    return send(res, 200, { url: await saveLocally(req, name, buffer) });
+  }
+
   // Local dev only: serve files saved without a Blob token.
-  if (req.method === 'GET' && !process.env.VERCEL) {
-    const name = String(new URL(req.url, 'http://x').searchParams.get('file') || '').replace(/[^a-z0-9.-]/gi, '');
+  if (req.method === 'GET' && isLocal) {
+    const name = String(params.get('file') || '').replace(/[^a-z0-9.-]/gi, '');
     const ext = name.split('.').pop();
-    const type = Object.keys(TYPES).find((t) => TYPES[t] === ext);
+    const types = { ...TYPES, ...VIDEO_TYPES };
+    const type = Object.keys(types).find((t) => types[t] === ext);
     try {
       const body = await readFile(join(LOCAL_DIR, name));
       res.setHeader('Content-Type', type || 'application/octet-stream');
@@ -129,7 +148,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST' && req.method !== 'DELETE') {
-    res.setHeader('Allow', 'POST, DELETE');
+    res.setHeader('Allow', 'POST, DELETE, PUT');
     return send(res, 405, { error: 'Method not allowed' });
   }
   if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
@@ -170,13 +189,9 @@ export default async function handler(req, res) {
 
     const name = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
 
+    if (isLocal) return send(res, 200, { url: await saveLocally(req, name, buffer) });
     if (!hasBlob) {
-      if (process.env.VERCEL) {
-        return send(res, 503, { error: '사진 저장소가 연결되지 않았습니다. Vercel 프로젝트에 Blob을 연결해 주세요.' });
-      }
-      await mkdir(LOCAL_DIR, { recursive: true });
-      await writeFile(join(LOCAL_DIR, name), buffer);
-      return send(res, 200, { url: `http://${req.headers.host}/api/upload?file=${name}` });
+      return send(res, 503, { error: '사진 저장소가 연결되지 않았습니다. Vercel 프로젝트에 Blob을 연결해 주세요.' });
     }
 
     const blob = await put(`hai/${name}`, buffer, { access: 'public', contentType: type, ...(blobToken && { token: blobToken }) });
