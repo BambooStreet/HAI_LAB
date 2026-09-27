@@ -15,8 +15,9 @@ const VIDEO_MAX_BYTES = 300 * 1024 * 1024;
 const MAX_BYTES = 4 * 1024 * 1024; // Vercel functions reject bodies over 4.5 MB
 const LOCAL_DIR = join(tmpdir(), 'hai-lab-uploads');
 
-// A read-write token looks like vercel_blob_rw_<storeId>_<secret>; the public URL needs the store id.
-const storeId = () => process.env.BLOB_STORE_ID || blobToken.split('_')[3] || '';
+// A read-write token looks like vercel_blob_rw_<storeId>_<secret>; the public URL needs the store id
+// without the "store_" prefix that BLOB_STORE_ID carries (that prefix makes the host 400).
+const storeId = () => (process.env.BLOB_STORE_ID || blobToken.split('_')[3] || '').replace(/^store_/, '');
 
 async function presignVideo(req, res) {
   const body = readBody(req);

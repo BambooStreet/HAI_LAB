@@ -64,7 +64,7 @@ function requireStore() {
 }
 
 // Posts the board starts with. Added once: deleting them later doesn't bring them back.
-// Listed newest first; the notice gets the later timestamp so it sits on top.
+// Listed oldest first, so the notice gets the earlier timestamp and sits on top.
 const DEFAULT_MEMOS = [
   {
     id: 'default-notice',
@@ -83,7 +83,8 @@ const DEFAULT_MEMOS = [
 async function seedDefaults() {
   if (await getJSON(SEEDED_KEY)) return;
   const now = Date.now();
-  const rows = DEFAULT_MEMOS.map((m, i) => ({ ...m, at: now - i }));
+  // A second apart and in the past, so posts written right after these still sort below them.
+  const rows = DEFAULT_MEMOS.map((m, i) => ({ ...m, at: now - (DEFAULT_MEMOS.length - i) * 1000 }));
   if (hasDb) {
     const q = await db();
     // Fixed ids + DO NOTHING: two first visits at once can't add the posts twice.
@@ -99,13 +100,34 @@ async function seedDefaults() {
   await setJSON(SEEDED_KEY, true);
 }
 
+// Videos uploaded before 2026-09-27 got a "store_"-prefixed host in their URL, which 400s.
+// The files are fine, so repair the links once instead of making anyone upload again.
+const BAD_HOST_KEY = 'hai:memo-blob-host-fixed';
+
+async function fixBlobUrls() {
+  if (await getJSON(BAD_HOST_KEY)) return;
+  const bad = 'https://store_';
+  if (hasDb) {
+    const q = await db();
+    await q`UPDATE hai_memos SET body = replace(body, ${bad}, 'https://') WHERE body LIKE ${`%${bad}%`}`;
+  } else {
+    for (const [id, row] of memory) memory.set(id, { ...row, body: row.body.split(bad).join('https://') });
+  }
+  // Papers live as JSON in the key-value store, so patch that copy too.
+  const papers = await getJSON('hai:papers');
+  const patched = papers && JSON.stringify(papers).split(bad).join('https://');
+  if (patched && patched !== JSON.stringify(papers)) await setJSON('hai:papers', JSON.parse(patched));
+  await setJSON(BAD_HOST_KEY, true);
+}
+
 // Each memo comes with its comments (oldest first), like count and whether `client` liked it.
 export async function listMemos(client = '') {
   requireStore();
   await seedDefaults();
+  await fixBlobUrls();
   let memos, comments, likes;
   if (!hasDb) {
-    memos = [...memory.values()].map(toMemo).sort((a, b) => b.createdAt - a.createdAt);
+    memos = [...memory.values()].map(toMemo).sort((a, b) => a.createdAt - b.createdAt);
     comments = [...memComments.values()].map(toComment).sort((a, b) => a.createdAt - b.createdAt);
     const counts = new Map();
     for (const key of memLikes) {
@@ -119,7 +141,7 @@ export async function listMemos(client = '') {
   } else {
     const q = await db();
     [memos, comments, likes] = await Promise.all([
-      q`SELECT * FROM hai_memos ORDER BY created_at DESC LIMIT 500`.then((rows) => rows.map(toMemo)),
+      q`SELECT * FROM hai_memos ORDER BY created_at LIMIT 500`.then((rows) => rows.map(toMemo)),
       q`SELECT * FROM hai_memo_comments ORDER BY created_at`.then((rows) => rows.map(toComment)),
       q`SELECT memo_id, count(*)::int AS n, bool_or(client = ${client}) AS liked FROM hai_memo_likes GROUP BY memo_id`,
     ]);

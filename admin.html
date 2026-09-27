@@ -431,16 +431,21 @@
     // storage, so the 4.5MB function body limit doesn't apply. onProgress gets 0..1.
     async function uploadVideo(file, onProgress) {
       const { uploadUrl, url } = await request('/api/upload?video=1', 'POST', { type: file.type, size: file.size });
-      await new Promise((resolve, reject) => {
+      const body = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', uploadUrl);
         xhr.setRequestHeader('Content-Type', file.type);
         xhr.upload.addEventListener('progress', (e) => e.lengthComputable && onProgress?.(e.loaded / e.total));
-        xhr.addEventListener('load', () => (xhr.status < 300 ? resolve() : reject(new Error(`동영상을 올리지 못했습니다 (${xhr.status})`))));
+        xhr.addEventListener('load', () => (xhr.status < 300
+          ? resolve(xhr.responseText)
+          : reject(new Error(`동영상을 올리지 못했습니다 (${xhr.status})`))));
         xhr.addEventListener('error', () => reject(new Error('동영상을 올리는 중 연결이 끊겼어요.')));
         xhr.send(file);
       });
-      return url;
+      // Blob answers with the stored blob's real URL; only fall back to the guessed one.
+      let stored = '';
+      try { stored = JSON.parse(body)?.url || ''; } catch {}
+      return stored || url;
     }
 
     const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
@@ -813,6 +818,13 @@
               ? await uploadVideo(file, (done) => toast(`동영상 올리는 중… ${Math.round(done * 100)}%`))
               : await uploadImage(file);
             delete node.dataset.uploading;
+            // A file the browser can't decode (an iPhone HEVC .mov, say) uploads fine but won't play.
+            if (video) {
+              node.addEventListener('error', () => {
+                toast('올라갔지만 이 브라우저에서 재생할 수 없는 형식이에요. MP4(H.264)로 변환해 주세요.', true);
+              }, { once: true });
+              node.load();
+            }
           } catch (err) {
             node.remove();
             toast(err.message, true);
@@ -1187,10 +1199,16 @@
         if (status >= 400) throw new Error(data.error || `저장하지 못했습니다 (${status})`);
         const prev = memos.find((m) => m.id === data.memo.id); // keep its comments and likes
         memos = [{ ...blankMemo, ...prev, ...data.memo }, ...memos.filter((m) => m.id !== data.memo.id)]
-          .sort((a, b) => b.createdAt - a.createdAt);
-        toast(memoEditing ? '수정했습니다.' : '메모를 남겼어요.');
+          .sort((a, b) => a.createdAt - b.createdAt);
+        const wasNew = !memoEditing;
+        toast(wasNew ? '메모를 남겼어요.' : '수정했습니다.');
         closeMemoForm();
         renderMemos();
+        // New posts land at the bottom of the board, so go show it.
+        if (wasNew) {
+          $('memo-list').querySelector(`[data-memo="${CSS.escape(data.memo.id)}"]`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       } catch (err) {
         toast(err.message, true);
       } finally {
