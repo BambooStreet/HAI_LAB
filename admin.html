@@ -1199,12 +1199,12 @@
         if (status >= 400) throw new Error(data.error || `저장하지 못했습니다 (${status})`);
         const prev = memos.find((m) => m.id === data.memo.id); // keep its comments and likes
         memos = [{ ...blankMemo, ...prev, ...data.memo }, ...memos.filter((m) => m.id !== data.memo.id)]
-          .sort((a, b) => a.createdAt - b.createdAt);
+          .sort((a, b) => b.createdAt - a.createdAt);
         const wasNew = !memoEditing;
         toast(wasNew ? '메모를 남겼어요.' : '수정했습니다.');
         closeMemoForm();
         renderMemos();
-        // New posts land at the bottom of the board, so go show it.
+        // New posts land at the top of the board, so go show it.
         if (wasNew) {
           $('memo-list').querySelector(`[data-memo="${CSS.escape(data.memo.id)}"]`)
             ?.scrollIntoView({ behavior: 'smooth', block: 'center' });

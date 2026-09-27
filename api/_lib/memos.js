@@ -64,7 +64,7 @@ function requireStore() {
 }
 
 // Posts the board starts with. Added once: deleting them later doesn't bring them back.
-// Listed oldest first, so the notice gets the earlier timestamp and sits on top.
+// Listed newest first, so the notice gets the later timestamp and sits on top.
 const DEFAULT_MEMOS = [
   {
     id: 'default-notice',
@@ -83,8 +83,8 @@ const DEFAULT_MEMOS = [
 async function seedDefaults() {
   if (await getJSON(SEEDED_KEY)) return;
   const now = Date.now();
-  // A second apart and in the past, so posts written right after these still sort below them.
-  const rows = DEFAULT_MEMOS.map((m, i) => ({ ...m, at: now - (DEFAULT_MEMOS.length - i) * 1000 }));
+  // A second apart and in the past, so posts written right after these still sort above them.
+  const rows = DEFAULT_MEMOS.map((m, i) => ({ ...m, at: now - (i + 1) * 1000 }));
   if (hasDb) {
     const q = await db();
     // Fixed ids + DO NOTHING: two first visits at once can't add the posts twice.
@@ -127,7 +127,7 @@ export async function listMemos(client = '') {
   await fixBlobUrls();
   let memos, comments, likes;
   if (!hasDb) {
-    memos = [...memory.values()].map(toMemo).sort((a, b) => a.createdAt - b.createdAt);
+    memos = [...memory.values()].map(toMemo).sort((a, b) => b.createdAt - a.createdAt);
     comments = [...memComments.values()].map(toComment).sort((a, b) => a.createdAt - b.createdAt);
     const counts = new Map();
     for (const key of memLikes) {
@@ -141,7 +141,7 @@ export async function listMemos(client = '') {
   } else {
     const q = await db();
     [memos, comments, likes] = await Promise.all([
-      q`SELECT * FROM hai_memos ORDER BY created_at LIMIT 500`.then((rows) => rows.map(toMemo)),
+      q`SELECT * FROM hai_memos ORDER BY created_at DESC LIMIT 500`.then((rows) => rows.map(toMemo)),
       q`SELECT * FROM hai_memo_comments ORDER BY created_at`.then((rows) => rows.map(toComment)),
       q`SELECT memo_id, count(*)::int AS n, bool_or(client = ${client}) AS liked FROM hai_memo_likes GROUP BY memo_id`,
     ]);
