@@ -229,6 +229,36 @@
     .feed-nav.prev { left: 8px; }
     .feed-nav.next { right: 8px; }
     .feed-nav[hidden] { display: none; }
+    .feed-zoom {
+      position: absolute; right: 10px; bottom: 10px; width: 28px; height: 28px; padding: 0;
+      border: none; border-radius: 8px; background: rgba(0, 0, 0, .55); color: #fff; font-size: 0.9rem;
+      opacity: 0; transition: opacity .15s;
+    }
+    .feed:hover .feed-zoom, .feed-zoom:focus-visible { opacity: 1; }
+    @media (hover: none) { .feed-zoom { opacity: 1; } }
+
+    /* Lightbox */
+    #lightbox {
+      width: 96vw; max-width: 1100px; height: 92vh; padding: 0; border: none; border-radius: 16px;
+      background: #0b0f0e; color: var(--text); overflow: hidden;
+      flex-direction: column; /* only applies while open, when display becomes flex */
+    }
+    #lightbox[open] { display: flex; }
+    #lightbox::backdrop { background: rgba(0, 0, 0, .8); }
+    #lightbox .lightbox-bar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 12px; color: var(--muted); font-size: 0.85rem;
+    }
+    /* minmax(0, 1fr) pins the cell to the dialog instead of letting a tall photo stretch it. */
+    #lightbox-body {
+      flex: 1; min-height: 0; padding: 0 12px 12px;
+      display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center;
+    }
+    /* Sized to the box and fitted inside it. (max-height:100% would measure against the image's
+       own height here, which let tall photos run past the bottom and get clipped.) */
+    #lightbox-body img, #lightbox-body video { width: 100%; height: 100%; object-fit: contain; }
+    #lightbox .feed-nav { opacity: 1; }
+
     .feed-dots { display: flex; justify-content: center; gap: 5px; padding: 8px; background: var(--surface); }
     .feed-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
     .feed-dot.on { background: var(--accent); }
@@ -454,6 +484,16 @@
       <button class="btn primary" type="button" id="content-save">저장</button>
     </div>
   </div>
+
+  <dialog id="lightbox" aria-label="크게 보기">
+    <div class="lightbox-bar">
+      <span id="lightbox-count"></span>
+      <button class="btn" type="button" id="lightbox-close">✕ 닫기</button>
+    </div>
+    <div id="lightbox-body"></div>
+    <button class="feed-nav prev" type="button" id="lightbox-prev" aria-label="이전">‹</button>
+    <button class="feed-nav next" type="button" id="lightbox-next" aria-label="다음">›</button>
+  </dialog>
 
   <div class="toast" id="toast" role="status"></div>
 
@@ -1418,6 +1458,7 @@
       return `
         <div class="feed"${urls.length > 1 ? ' data-many' : ''}>
           <div class="feed-track">${urls.map(slide).join('')}</div>
+          <button class="feed-zoom" type="button" data-zoom aria-label="크게 보기">⤢</button>
           ${urls.length > 1 ? `
             <span class="feed-count">1 / ${urls.length}</span>
             <button class="feed-nav prev" type="button" data-feed="-1" aria-label="이전 사진" hidden>‹</button>
@@ -1612,7 +1653,17 @@
 
     $('memo-list').addEventListener('click', async (e) => {
       const img = e.target.closest('.memo-body img, .c-body img, .feed-item img');
-      if (img) return window.open(img.src, '_blank', 'noopener');
+      if (img) {
+        const slides = [...(img.closest('.feed-track')?.querySelectorAll('.feed-item img, .feed-item video') ?? [img])];
+        return openLightbox(slides.map((el) => el.src), Math.max(0, slides.indexOf(img)));
+      }
+      const zoom = e.target.closest('[data-zoom]');
+      if (zoom) {
+        const track = zoom.closest('.feed').querySelector('.feed-track');
+        const slides = [...track.querySelectorAll('.feed-item img, .feed-item video')];
+        const at = Math.min(slides.length - 1, Math.round(track.scrollLeft / track.clientWidth));
+        return openLightbox(slides.map((el) => el.src), Math.max(0, at));
+      }
       const nav = e.target.closest('[data-feed]');
       if (nav) {
         const track = nav.closest('.feed').querySelector('.feed-track');
@@ -1654,6 +1705,53 @@
       } catch (err) {
         toast(err.message, true);
       }
+    });
+
+    // ---------- lightbox ----------
+    // Tapping a photo opens it big; videos keep their own controls in the strip and open from
+    // the ⤢ button instead, so a tap on them still means play.
+    const lightbox = $('lightbox');
+    let lightboxItems = [];
+    let lightboxAt = 0;
+
+    function drawLightbox() {
+      const url = lightboxItems[lightboxAt] ?? '';
+      $('lightbox-body').innerHTML = VIDEO_RE.test(url)
+        ? `<video src="${esc(url)}" controls autoplay playsinline></video>`
+        : `<img src="${esc(url)}" alt="" />`;
+      $('lightbox-count').textContent = lightboxItems.length > 1 ? `${lightboxAt + 1} / ${lightboxItems.length}` : '';
+      $('lightbox-prev').hidden = lightboxAt === 0;
+      $('lightbox-next').hidden = lightboxAt >= lightboxItems.length - 1;
+    }
+
+    function openLightbox(items, at = 0) {
+      lightboxItems = items.filter(Boolean);
+      lightboxAt = at;
+      if (!lightboxItems.length) return;
+      drawLightbox();
+      if (!lightbox.open) lightbox.showModal();
+    }
+
+    function stepLightbox(by) {
+      const next = lightboxAt + by;
+      if (next < 0 || next >= lightboxItems.length) return;
+      lightboxAt = next;
+      drawLightbox();
+    }
+
+    function closeLightbox() {
+      $('lightbox-body').innerHTML = ''; // also stops a video that was playing
+      if (lightbox.open) lightbox.close();
+    }
+
+    $('lightbox-close').addEventListener('click', closeLightbox);
+    $('lightbox-prev').addEventListener('click', () => stepLightbox(-1));
+    $('lightbox-next').addEventListener('click', () => stepLightbox(1));
+    lightbox.addEventListener('click', (e) => { if (e.target === lightbox) closeLightbox(); });
+    lightbox.addEventListener('close', closeLightbox); // Esc closes it without a click
+    lightbox.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') stepLightbox(-1);
+      if (e.key === 'ArrowRight') stepLightbox(1);
     });
 
     // Keep the counter, dots and arrows in step with whatever the strip is showing.
