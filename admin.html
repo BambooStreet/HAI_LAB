@@ -115,10 +115,10 @@
     .editor:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
     .editor.drag-over { outline: 2px dashed var(--accent); outline-offset: -2px; }
     .editor b, .editor strong { color: var(--accent); }
-    .editor img { display: block; max-width: 100%; max-height: 360px; margin: 8px 0; border-radius: 10px; border: 1px solid var(--line); }
-    .editor img[data-uploading] { opacity: .45; }
+    .editor img, .editor video { display: block; max-width: 100%; max-height: 360px; margin: 8px 0; border-radius: 10px; border: 1px solid var(--line); }
+    .editor img[data-uploading], .editor video[data-uploading] { opacity: .45; }
     .editor img:not([data-uploading]) { cursor: pointer; }
-    .editor img.picked { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .editor img.picked, .editor video.picked { outline: 3px solid var(--accent); outline-offset: 2px; }
     .img-sizer {
       position: fixed; z-index: 30; display: flex; gap: 2px; padding: 4px; width: max-content;
       background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
@@ -187,7 +187,8 @@
     .memo-head .actions { display: flex; gap: 6px; flex: none; }
     .memo-head .btn { padding: 4px 10px; font-size: 0.82rem; }
     .memo-body { margin-top: 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 0.95rem; }
-    .memo-body img { display: block; max-width: 100%; max-height: 420px; margin: 6px 0; border-radius: 10px; border: 1px solid var(--line); cursor: zoom-in; }
+    .memo-body img, .memo-body video { display: block; max-width: 100%; max-height: 420px; margin: 6px 0; border-radius: 10px; border: 1px solid var(--line); }
+    .memo-body img { cursor: zoom-in; }
     .memo-body a, .editor a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
     .editor.memo-editor { min-height: 200px; }
 
@@ -247,10 +248,10 @@
       <div class="banner" id="blob-warn" hidden>⚠️ 사진 저장소(Blob)가 연결되지 않아 사진을 올릴 수 없습니다. Vercel 프로젝트의 Storage 탭에서 Blob을 연결하고 Redeploy 해 주세요.</div>
 
       <div class="tabs" role="tablist">
-        <button role="tab" data-tab="content" aria-selected="true">🏠 홈페이지 내용</button>
+        <button role="tab" data-tab="memo" aria-selected="true">📝 메모장</button>
+        <button role="tab" data-tab="content" aria-selected="false">🏠 홈페이지 내용</button>
         <button role="tab" data-tab="papers" aria-selected="false">📄 Papers</button>
         <button role="tab" data-tab="stats" aria-selected="false">📊 방문자 통계</button>
-        <button role="tab" data-tab="memo" aria-selected="false">📝 메모장</button>
       </div>
 
       <!-- Memo tab -->
@@ -265,6 +266,7 @@
                 <button class="btn" type="button" id="memo-bold" title="굵게 (Ctrl+B)"><b>B</b></button>
                 <button class="btn" type="button" id="memo-link" title="글자를 선택하고 누르면 그 글자에 링크가 걸려요">🔗 링크</button>
                 <button class="btn" type="button" id="memo-image">🖼️ 사진</button>
+                <button class="btn" type="button" id="memo-video">🎬 동영상</button>
               </div>
             </div>
             <div class="editor memo-editor" id="memo-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="메모 내용"
@@ -313,6 +315,7 @@
               <div class="btns">
                 <button class="btn" type="button" id="bold-btn" title="굵게 (Ctrl+B)"><b>B</b></button>
                 <button class="btn" type="button" id="insert-image">🖼️ 사진 넣기</button>
+                <button class="btn" type="button" id="insert-video">🎬 동영상 넣기</button>
               </div>
             </div>
             <div class="editor" id="editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="본문"
@@ -333,7 +336,7 @@
       </div>
 
       <!-- Content tab -->
-      <div id="tab-content">
+      <div id="tab-content" hidden>
         <form id="content-form" autocomplete="off"></form>
       </div>
     </div>
@@ -424,18 +427,37 @@
       return data.url;
     }
 
-    function pickImages(multiple = false) {
+    // Videos skip the server: it hands out a one-off upload URL and the file goes straight to
+    // storage, so the 4.5MB function body limit doesn't apply. onProgress gets 0..1.
+    async function uploadVideo(file, onProgress) {
+      const { uploadUrl, url } = await request('/api/upload?video=1', 'POST', { type: file.type, size: file.size });
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.upload.addEventListener('progress', (e) => e.lengthComputable && onProgress?.(e.loaded / e.total));
+        xhr.addEventListener('load', () => (xhr.status < 300 ? resolve() : reject(new Error(`동영상을 올리지 못했습니다 (${xhr.status})`))));
+        xhr.addEventListener('error', () => reject(new Error('동영상을 올리는 중 연결이 끊겼어요.')));
+        xhr.send(file);
+      });
+      return url;
+    }
+
+    const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+    const isVideo = (file) => VIDEO_TYPES.includes(file.type);
+
+    function pickFiles(accept, multiple = false) {
       return new Promise((resolve) => {
         const el = document.createElement('input');
         el.type = 'file';
-        el.accept = 'image/*';
+        el.accept = accept;
         el.multiple = multiple;
         el.addEventListener('change', () => resolve([...el.files]));
         el.click();
       });
     }
 
-    const imageFiles = (list) => [...(list || [])].filter((f) => f.type.startsWith('image/'));
+    const mediaFiles = (list) => [...(list || [])].filter((f) => f.type.startsWith('image/') || isVideo(f));
 
     async function request(url, method, body) {
       const res = await fetch(url, {
@@ -466,10 +488,10 @@
       content = clone(savedContent);
       $('login-view').hidden = true;
       $('app').hidden = false;
-      $('savebar').hidden = false;
       $('logout').hidden = !passwordRequired;
       renderPapers();
       renderContentForm();
+      selectTab(document.querySelector('.tabs button[data-tab="memo"]')); // the board is the landing tab
     }
 
     function logout() {
@@ -492,7 +514,10 @@
     // ---------- tabs ----------
     document.querySelector('.tabs').addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-tab]');
-      if (!btn) return;
+      if (btn) selectTab(btn);
+    });
+
+    function selectTab(btn) {
       for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b === btn));
       btn.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // tabs scroll sideways on narrow screens
       $('tab-papers').hidden = btn.dataset.tab !== 'papers';
@@ -502,7 +527,7 @@
       $('savebar').hidden = btn.dataset.tab !== 'content';
       if (btn.dataset.tab === 'stats' && !statsLoaded) loadStats();
       if (btn.dataset.tab === 'memo' && !memoLoaded) loadMemos();
-    });
+    }
 
     // ---------- stats ----------
     let statsLoaded = false;
@@ -649,7 +674,7 @@
             if (n.nodeType !== Node.ELEMENT_NODE) continue;
             const tag = n.tagName;
             if (tag === 'BR') { out += '\n'; continue; }
-            if (tag === 'IMG') {
+            if (tag === 'IMG' || tag === 'VIDEO') {
               const src = n.getAttribute('src') || '';
               if (!n.dataset.uploading && /^https?:\/\//.test(src)) {
                 if (out && !out.endsWith('\n')) out += '\n';
@@ -714,7 +739,7 @@
       }
 
       el.addEventListener('click', (e) => {
-        const img = e.target.closest('img');
+        const img = e.target.closest('img, video');
         pick(img && !img.dataset.uploading ? img : null);
       });
       el.addEventListener('keydown', () => pick(null));
@@ -767,45 +792,50 @@
         onUploading(uploading > 0);
       }
 
-      // Show the photo immediately (local preview), then swap in the uploaded URL.
-      async function insertImages(files) {
+      // Show the file immediately (local preview), then swap in the uploaded URL.
+      async function insertMedia(files) {
         if (!files.length) return;
         el.focus();
-        toast(`사진 ${files.length}장 올리는 중…`);
+        const videos = files.filter(isVideo).length;
+        toast(videos ? `동영상 ${videos}개 올리는 중…` : `사진 ${files.length}장 올리는 중…`);
         await Promise.all(files.map(async (file) => {
-          const img = document.createElement('img');
+          const video = isVideo(file);
+          const node = document.createElement(video ? 'video' : 'img');
           const local = URL.createObjectURL(file);
-          img.src = local;
-          img.alt = '';
-          img.dataset.uploading = '1';
-          insertAtCaret(img);
+          node.src = local;
+          if (video) node.controls = true;
+          else node.alt = '';
+          node.dataset.uploading = '1';
+          insertAtCaret(node);
           setUploading(1);
           try {
-            img.src = await uploadImage(file);
-            delete img.dataset.uploading;
+            node.src = video
+              ? await uploadVideo(file, (done) => toast(`동영상 올리는 중… ${Math.round(done * 100)}%`))
+              : await uploadImage(file);
+            delete node.dataset.uploading;
           } catch (err) {
-            img.remove();
+            node.remove();
             toast(err.message, true);
             throw err;
           } finally {
             URL.revokeObjectURL(local);
             setUploading(-1);
           }
-        })).then(() => toast('사진을 넣었어요.'), () => {});
+        })).then(() => toast(videos ? '동영상을 넣었어요.' : '사진을 넣었어요.'), () => {});
       }
 
-      function clipboardImages(data) {
+      function clipboardMedia(data) {
         const fromItems = [...(data?.items || [])]
-          .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+          .filter((i) => i.kind === 'file' && (i.type.startsWith('image/') || isVideo(i)))
           .map((i) => i.getAsFile())
           .filter(Boolean);
-        return fromItems.length ? fromItems : imageFiles(data?.files);
+        return fromItems.length ? fromItems : mediaFiles(data?.files);
       }
 
       el.addEventListener('paste', (e) => {
         e.preventDefault();
-        const files = clipboardImages(e.clipboardData);
-        if (files.length) return insertImages(files);
+        const files = clipboardMedia(e.clipboardData);
+        if (files.length) return insertMedia(files);
         // Images copied from a web page (no file data): embed their https URLs directly.
         const html = e.clipboardData.getData('text/html');
         const urls = html
@@ -832,7 +862,7 @@
       el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
       el.addEventListener('drop', (e) => {
         el.classList.remove('drag-over');
-        const files = imageFiles(e.dataTransfer.files);
+        const files = mediaFiles(e.dataTransfer.files);
         if (!files.length) return;
         e.preventDefault();
         const pos = document.caretPositionFromPoint?.(e.clientX, e.clientY);
@@ -842,7 +872,7 @@
           range.collapse(true);
           restoreCaret(range);
         }
-        insertImages(files);
+        insertMedia(files);
       });
 
       return {
@@ -854,9 +884,15 @@
         },
         get uploading() { return uploading > 0; },
         async addImages() {
-          const files = await pickImages(true);
+          const files = await pickFiles('image/*', true);
           restoreCaret();
-          insertImages(files);
+          insertMedia(files);
+        },
+        async addVideo() {
+          const [file] = await pickFiles('video/mp4,video/webm,video/quicktime');
+          if (!file) return;
+          restoreCaret();
+          insertMedia([file]);
         },
         bold() {
           el.focus();
@@ -890,6 +926,7 @@
       onUploading: (busy) => { $('paper-form').querySelector('[type=submit]').disabled = busy; },
     });
     $('insert-image').addEventListener('click', () => paperEditor.addImages());
+    $('insert-video').addEventListener('click', () => paperEditor.addVideo());
     keepSelection($('bold-btn'));
     $('bold-btn').addEventListener('click', () => paperEditor.bold());
 
@@ -1214,10 +1251,11 @@
       if (memoDirty() && !confirm('작성 중인 내용을 버릴까요?')) return;
       closeMemoForm();
     });
-    for (const id of ['memo-bold', 'memo-link', 'memo-image']) keepSelection($(id));
+    for (const id of ['memo-bold', 'memo-link', 'memo-image', 'memo-video']) keepSelection($(id));
     $('memo-bold').addEventListener('click', () => memoEditor.bold());
     $('memo-link').addEventListener('click', () => memoEditor.addLink());
     $('memo-image').addEventListener('click', () => memoEditor.addImages());
+    $('memo-video').addEventListener('click', () => memoEditor.addVideo());
 
     // ---------- content form ----------
     // Each input carries data-path (e.g. "members.0.name"); edits write straight into `content`.
@@ -1381,7 +1419,7 @@
         renderContentForm();
         return;
       }
-      const [file] = await pickImages();
+      const [file] = await pickFiles('image/*');
       if (file) setPhoto(base, file);
     });
     contentForm.addEventListener('dragover', (e) => {
@@ -1396,7 +1434,7 @@
       if (!drop) return;
       e.preventDefault();
       drop.classList.remove('over');
-      const [file] = imageFiles(e.dataTransfer.files);
+      const [file] = mediaFiles(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
       if (file) setPhoto(drop.closest('[data-photo]').dataset.photo, file);
     });
 

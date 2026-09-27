@@ -26,10 +26,15 @@ const IMAGE_RE = /!\[([^\]\n]*)\]\((https?:\/\/[^\s)]+)\)/g;
 
 // A caption of the form "50%" is a display width set in the editor (![50%](url)), not alt text.
 export const IMAGE_SIZE_RE = /^(\d{1,3})%$/;
-function image(alt, url) {
+// Videos use the same ![](url) syntax; the file extension decides how they're shown.
+export const VIDEO_RE = /\.(mp4|webm|mov)(\?|$)/i;
+
+function media(alt, url) {
   const size = Number(IMAGE_SIZE_RE.exec(alt)?.[1]);
   const style = size >= 10 && size <= 100 ? ` style="width:${size}%;max-height:none"` : '';
-  return `<img class="body-img" src="${url}" alt="${style ? '' : alt}"${style} loading="lazy" />`;
+  return VIDEO_RE.test(url)
+    ? `<video class="body-img" src="${url}" controls preload="metadata" playsinline${style}></video>`
+    : `<img class="body-img" src="${url}" alt="${style ? '' : alt}"${style} loading="lazy" />`;
 }
 
 // With { links: true }, also [label](https://...) links and bare https:// URLs, in one pass so an
@@ -42,7 +47,7 @@ const link = (url, label) => `<a href="${url}" target="_blank" rel="noopener nor
 
 export function renderBody(text, { links = false } = {}) {
   if (!links) {
-    return rich(text).replace(IMAGE_RE, (_, alt, url) => image(alt, url));
+    return rich(text).replace(IMAGE_RE, (_, alt, url) => media(alt, url));
   }
   return rich(text).replace(LINKED_RE, (_, bang, label, url, bare) => {
     if (bare) {
@@ -57,12 +62,15 @@ export function renderBody(text, { links = false } = {}) {
       return link(href, href) + trail;
     }
     return bang
-      ? image(label, url)
+      ? media(label, url)
       : link(url, label || url);
   });
 }
 
+// Thumbnail for the paper list: the first still image, never a video.
 export function firstImage(text) {
-  const m = new RegExp(IMAGE_RE.source).exec(text || '');
-  return m ? safeUrl(m[2], ['http:', 'https:']) : '';
+  for (const m of String(text ?? '').matchAll(IMAGE_RE)) {
+    if (!VIDEO_RE.test(m[2])) return safeUrl(m[2], ['http:', 'https:']);
+  }
+  return '';
 }
