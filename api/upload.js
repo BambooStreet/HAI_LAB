@@ -1,10 +1,11 @@
-import { put, issueSignedToken, presignUrl } from '@vercel/blob';
+import { put, del, list, issueSignedToken, presignUrl } from '@vercel/blob';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { send, isAdmin, readBody } from './_lib/http.js';
-import { blobToken, hasBlob } from './_lib/store.js';
+import { blobToken, hasBlob, getJSON } from './_lib/store.js';
+import { listMemos } from './_lib/memos.js';
 
 // Images arrive already resized by the admin page, as a raw application/octet-stream body.
 const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
@@ -67,7 +68,52 @@ async function readBuffer(req) {
   return Buffer.concat(chunks);
 }
 
+// Files no post shows any more. Anything uploaded in the last hour is kept, so a photo that is
+// still sitting in an unsaved post is never swept away.
+const KEEP_RECENT_MS = 60 * 60 * 1000;
+
+async function findOrphans() {
+  const [{ blobs }, memos, papers, content] = await Promise.all([
+    list({ prefix: 'hai/', limit: 1000, ...(blobToken && { token: blobToken }) }),
+    listMemos(),
+    getJSON('hai:papers'),
+    getJSON('hai:content'),
+  ]);
+  // Compared by pathname, not URL, so a link saved under an older host still counts as in use.
+  const shown = JSON.stringify([memos, papers, content]);
+  const fresh = Date.now() - KEEP_RECENT_MS;
+  const orphans = blobs.filter((b) => !shown.includes(b.pathname) && new Date(b.uploadedAt).getTime() < fresh);
+  const size = (rows) => rows.reduce((n, b) => n + b.size, 0);
+  return {
+    orphans,
+    summary: {
+      total: blobs.length,
+      totalBytes: size(blobs),
+      unused: orphans.length,
+      unusedBytes: size(orphans),
+      files: orphans.map((b) => ({ pathname: b.pathname, size: b.size, uploadedAt: b.uploadedAt })),
+    },
+  };
+}
+
 export default async function handler(req, res) {
+  const params = new URL(req.url, 'http://x').searchParams;
+
+  // Storage housekeeping, both admin-only.
+  if (params.has('orphans') && (req.method === 'GET' || req.method === 'DELETE')) {
+    if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
+    if (!hasBlob) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
+    try {
+      const { orphans, summary } = await findOrphans();
+      if (req.method === 'GET') return send(res, 200, summary);
+      if (orphans.length) await del(orphans.map((b) => b.url), { ...(blobToken && { token: blobToken }) });
+      return send(res, 200, { ...summary, deleted: orphans.length });
+    } catch (err) {
+      console.error(err);
+      return send(res, 500, { error: `저장소를 정리하지 못했습니다: ${err.message}` });
+    }
+  }
+
   // Local dev only: serve files saved without a Blob token.
   if (req.method === 'GET' && !process.env.VERCEL) {
     const name = String(new URL(req.url, 'http://x').searchParams.get('file') || '').replace(/[^a-z0-9.-]/gi, '');
@@ -82,11 +128,27 @@ export default async function handler(req, res) {
     }
   }
 
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+  if (req.method !== 'POST' && req.method !== 'DELETE') {
+    res.setHeader('Allow', 'POST, DELETE');
     return send(res, 405, { error: 'Method not allowed' });
   }
   if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
+
+  // Frees the storage a photo or video took once no post shows it any more.
+  if (req.method === 'DELETE') {
+    const url = new URL(req.url, 'http://x').searchParams.get('url') || '';
+    if (!/^https:\/\/[\w.-]+\.blob\.vercel-storage\.com\/hai\//.test(url)) {
+      return send(res, 400, { error: '이 저장소의 파일이 아닙니다.' });
+    }
+    if (!hasBlob) return send(res, 200, { ok: true, skipped: 'no-blob' });
+    try {
+      await del(url, { ...(blobToken && { token: blobToken }) });
+      return send(res, 200, { ok: true });
+    } catch (err) {
+      console.error(err);
+      return send(res, 500, { error: `파일을 지우지 못했습니다: ${err.message}` });
+    }
+  }
 
   if (new URL(req.url, 'http://x').searchParams.has('video')) {
     try {

@@ -1,9 +1,11 @@
 // Neon Postgres key-value store: one row per key, value stored as jsonb.
 // Vercel's Neon integration injects DATABASE_URL (or <PREFIX>_DATABASE_URL when connected with a custom prefix).
-const DATABASE_URL =
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  Object.entries(process.env).find(([k, v]) => k.endsWith('DATABASE_URL') && /^postgres(ql)?:\/\//.test(v || ''))?.[1];
+// Only a real connection string counts: `vercel env pull` writes "[SENSITIVE]" for secrets it
+// cannot read, and treating that as a database makes every query hang.
+const isPostgresUrl = (v) => /^postgres(ql)?:\/\//.test(v || '');
+const DATABASE_URL = [process.env.DATABASE_URL, process.env.POSTGRES_URL]
+  .concat(Object.entries(process.env).filter(([k]) => k.endsWith('DATABASE_URL')).map(([, v]) => v))
+  .find(isPostgresUrl);
 
 export const hasDb = Boolean(DATABASE_URL);
 
