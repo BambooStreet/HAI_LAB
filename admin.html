@@ -115,7 +115,7 @@
     .editor:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
     .editor.drag-over { outline: 2px dashed var(--accent); outline-offset: -2px; }
     .editor b, .editor strong { color: var(--accent); }
-    .editor img, .editor video { display: block; max-width: 100%; max-height: 360px; margin: 8px 0; border-radius: 10px; border: 1px solid var(--line); }
+    .editor img, .editor video { display: block; max-width: 100%; max-height: 360px; margin: 8px auto; border-radius: 10px; border: 1px solid var(--line); }
     .editor img[data-uploading], .editor video[data-uploading] { opacity: .45; }
     .editor img:not([data-uploading]) { cursor: pointer; }
     .editor img.picked, .editor video.picked { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -187,11 +187,88 @@
     .memo-head .meta { color: var(--muted); font-size: 0.82rem; }
     .memo-head .actions { display: flex; gap: 6px; flex: none; }
     .memo-head .btn { padding: 4px 10px; font-size: 0.82rem; }
+    /* Feed strip: photos and videos of a post, side by side, swipeable */
+    .feed { position: relative; margin: 14px -18px 0; background: #000; }
+    .feed-track {
+      display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+      scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .feed-track::-webkit-scrollbar { display: none; }
+    /* Every post gets the same frame, and each photo or video is fitted inside it whole:
+       letterboxing on one side beats cropping someone's observation photo. */
+    /* A set height, full card width. (An aspect-ratio plus max-height shrinks the width to keep
+       the ratio, which left the frame narrower than the card and everything pinned to the left.) */
+    .feed-track { height: min(58vh, 420px); }
+    /* min-width:0 matters: without it a slide can't shrink below the video's own width,
+       so the video spills past the frame and sits off to one side. */
+    .feed-item { flex: 0 0 100%; min-width: 0; scroll-snap-align: center; scroll-snap-stop: always; }
+    .feed-item img, .feed-item video {
+      width: 100%; height: 100%; max-width: 100%; object-fit: contain; display: block;
+    }
+    .feed-item img { cursor: zoom-in; }
+    .feed-count {
+      position: absolute; top: 10px; right: 12px; padding: 2px 9px; border-radius: 999px;
+      background: rgba(0, 0, 0, .6); color: #fff; font-size: 0.75rem;
+    }
+    .feed-nav {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      width: 30px; height: 30px; border-radius: 50%; border: none; padding: 0;
+      background: rgba(0, 0, 0, .55); color: #fff; font-size: 1.2rem; line-height: 1; opacity: 0;
+      transition: opacity .15s;
+    }
+    .feed:hover .feed-nav { opacity: 1; }
+    .feed-nav:hover { background: rgba(0, 0, 0, .8); }
+    .feed-nav.prev { left: 8px; }
+    .feed-nav.next { right: 8px; }
+    .feed-nav[hidden] { display: none; }
+    .feed-dots { display: flex; justify-content: center; gap: 5px; padding: 8px; background: var(--surface); }
+    .feed-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+    .feed-dot.on { background: var(--accent); }
+    @media (hover: none) { .feed-nav { display: none; } } /* phones swipe instead */
+
     .memo-body { margin-top: 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 0.95rem; }
-    .memo-body img, .memo-body video { display: block; max-width: 100%; max-height: 420px; margin: 6px 0; border-radius: 10px; border: 1px solid var(--line); }
+    .memo-body img, .memo-body video { display: block; max-width: 100%; max-height: 420px; margin: 6px auto; border-radius: 10px; border: 1px solid var(--line); }
     .memo-body img { cursor: zoom-in; }
     .memo-body a, .editor a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
-    .editor.memo-editor { min-height: 200px; }
+    /* Memo composer: the photo strip on top, caption below, like the card it becomes */
+    .media-field { margin-bottom: 14px; }
+    .field-label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+    #memo-media { border-radius: 12px; }
+    #memo-media.over { outline: 2px dashed var(--accent); outline-offset: 3px; }
+    .dropzone {
+      display: grid; gap: 4px; place-items: center; width: 100%; padding: 28px 16px;
+      border: 1px dashed var(--line); border-radius: 12px; background: var(--bg);
+      color: var(--muted); font-size: 0.95rem;
+    }
+    .dropzone small { font-size: 0.8rem; }
+    .dropzone:hover { border-color: var(--accent); color: var(--text); }
+    .thumbs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+    .thumb {
+      position: relative; flex: none; width: 96px; height: 96px; border-radius: 10px; overflow: hidden;
+      border: 1px solid var(--line); background: #000; cursor: grab;
+    }
+    .thumb img, .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb.dragging { opacity: .4; }
+    .thumb.busy img, .thumb.busy video { opacity: .4; }
+    .thumb .play, .thumb .pct {
+      position: absolute; inset: 0; display: grid; place-items: center;
+      color: #fff; font-size: 0.85rem; text-shadow: 0 1px 3px rgba(0, 0, 0, .8); pointer-events: none;
+    }
+    .thumb .cover {
+      position: absolute; left: 4px; bottom: 4px; padding: 1px 6px; border-radius: 999px;
+      background: var(--accent); color: var(--on-accent); font-size: 0.7rem; font-weight: 700;
+    }
+    .thumb-x {
+      position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; padding: 0;
+      border: none; border-radius: 50%; background: rgba(0, 0, 0, .65); color: #fff; font-size: 0.7rem;
+    }
+    .thumb-x:hover { background: var(--danger); color: var(--bg); }
+    .thumb.add {
+      display: grid; place-items: center; background: var(--surface-2); border-style: dashed;
+      color: var(--muted); font-size: 1.4rem; cursor: pointer;
+    }
+    .thumb.add:hover { border-color: var(--accent); color: var(--accent); }
+    #memo-caption { min-height: 90px; }
 
     .memo-foot { display: flex; gap: 6px; margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
     .react { background: none; border: 1px solid transparent; border-radius: 999px; padding: 4px 12px; font-size: 0.85rem; color: var(--muted); }
@@ -260,18 +337,13 @@
         <form class="card" id="memo-form" hidden autocomplete="off">
           <h3 id="memo-form-title">새 메모</h3>
           <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
-          <div class="body-field">
-            <div class="body-bar">
-              <span>내용</span>
-              <div class="btns">
-                <button class="btn" type="button" id="memo-image">🖼️ 사진</button>
-                <button class="btn" type="button" id="memo-video">🎬 동영상</button>
-              </div>
-            </div>
-            <div class="editor memo-editor" id="memo-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="메모 내용"
-                 data-placeholder="메모를 남겨보세요. 사진은 붙여넣기(Ctrl+V)나 끌어다 놓기로, 링크는 주소를 그대로 붙여넣어도 돼요."></div>
+          <div class="media-field">
+            <span class="field-label">사진 · 동영상</span>
+            <div id="memo-media"></div>
+            <p class="hint" id="memo-media-hint">끌어다 놓거나 붙여넣기(Ctrl+V)로도 올릴 수 있어요. 여러 장이면 끌어서 순서를 바꿀 수 있고, 맨 앞 것이 피드에 먼저 보입니다.</p>
           </div>
-          <p class="hint">📷 넣은 사진·동영상을 <b>클릭</b>하면 크기를 바꾸거나 🗑 삭제할 수 있어요.</p>
+          <label><span>설명</span><textarea id="memo-caption" rows="4" maxlength="50000"
+            placeholder="사진에 대한 설명을 적어보세요. 주소를 붙여넣으면 링크가 됩니다."></textarea></label>
           <div class="form-actions">
             <button class="btn" type="button" id="memo-cancel">취소</button>
             <button class="btn primary" type="submit">저장</button>
@@ -362,7 +434,7 @@
   <div class="toast" id="toast" role="status"></div>
 
   <script type="module">
-    import { esc, renderBody, safeUrl } from '/assets/common.js';
+    import { esc, renderBody, safeUrl, VIDEO_RE } from '/assets/common.js';
 
     const $ = (id) => document.getElementById(id);
     const PW_KEY = 'hai-admin-pw';
@@ -1093,16 +1165,135 @@
     // Admin-only posts. Each save carries the version it was based on; if someone else saved
     // the same post in between, the server answers 409 and we ask before overwriting.
     const memoForm = $('memo-form');
-    const memoEditor = createEditor($('memo-editor'), {
-      links: true,
-      onUploading: (busy) => { memoForm.querySelector('[type=submit]').disabled = busy; },
-    });
     let memos = [];
     let memoLoaded = false;
     let memoEditing = null; // { id, version } while editing an existing post
     let memoInitial = '';
 
-    const memoSnapshot = () => JSON.stringify([memoForm.title.value, memoEditor.value]);
+    // ---------- memo composer ----------
+    // The form mirrors the card: photos and videos in a strip, then the caption underneath.
+    // Saved as the same body text as before — media lines first, caption last.
+    const memoCaption = $('memo-caption');
+    let memoMedia = []; // { url, video, uploading, progress, preview }
+    let memoUploads = 0;
+
+    const memoBody = () => [...memoMedia.filter((i) => i.url).map((i) => `![](${i.url})`), memoCaption.value.trim()]
+      .filter(Boolean).join('\n');
+
+    // What's left of a body once its photos and videos are pulled out into the strip.
+    const captionOf = (body) => String(body ?? '')
+      .replace(/!\[[^\]\n]*\]\(https?:\/\/[^\s)]+\)/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    function setMemoBusy() {
+      memoForm.querySelector('[type=submit]').disabled = memoUploads > 0;
+    }
+
+    function renderMemoMedia() {
+      $('memo-media-hint').hidden = !memoMedia.length;
+      $('memo-media').innerHTML = memoMedia.length
+        ? `<div class="thumbs">${memoMedia.map((item, i) => `
+            <div class="thumb${item.uploading ? ' busy' : ''}" draggable="${!item.uploading}" data-i="${i}">
+              ${item.video
+                ? `<video src="${esc(item.url || item.preview)}" muted playsinline preload="metadata"></video><span class="play">▶</span>`
+                : `<img src="${esc(item.url || item.preview)}" alt="" />`}
+              ${i === 0 ? '<span class="cover">대표</span>' : ''}
+              ${item.uploading
+                ? `<span class="pct">${Math.round(item.progress * 100)}%</span>`
+                : `<button class="thumb-x" type="button" data-drop-media="${i}" aria-label="빼기">✕</button>`}
+            </div>`).join('')}
+            <button class="thumb add" type="button" data-add-media aria-label="더 올리기">＋</button>
+          </div>`
+        : `<button class="dropzone" type="button" data-add-media>
+             📷 사진 · 동영상 올리기
+             <small>눌러서 고르거나, 여기로 끌어다 놓거나, 붙여넣기(Ctrl+V)</small>
+           </button>`;
+    }
+
+    // Uploaded one at a time so a big video's progress is easy to follow.
+    async function addMemoFiles(list) {
+      const files = mediaFiles(list);
+      if (!files.length) return;
+      for (const file of files) {
+        const item = { video: isVideo(file), uploading: true, progress: 0, preview: URL.createObjectURL(file) };
+        memoMedia.push(item);
+        memoUploads += 1;
+        setMemoBusy();
+        renderMemoMedia();
+        try {
+          item.url = item.video
+            ? await uploadVideo(file, (done) => { item.progress = done; renderMemoMedia(); })
+            : await uploadImage(file);
+          item.uploading = false;
+        } catch (err) {
+          memoMedia = memoMedia.filter((x) => x !== item);
+          toast(err.message, true);
+        } finally {
+          URL.revokeObjectURL(item.preview);
+          memoUploads -= 1;
+          setMemoBusy();
+          renderMemoMedia();
+        }
+      }
+    }
+
+    const pickMemoFiles = async () => addMemoFiles(await pickFiles('image/*,video/mp4,video/webm,video/quicktime', true));
+
+    let dragFrom = null;
+
+    $('memo-media').addEventListener('click', (e) => {
+      if (e.target.closest('[data-add-media]')) return pickMemoFiles();
+      const x = e.target.closest('[data-drop-media]');
+      if (!x) return;
+      memoMedia.splice(Number(x.dataset.dropMedia), 1);
+      renderMemoMedia();
+    });
+
+    $('memo-media').addEventListener('dragstart', (e) => {
+      const thumb = e.target.closest('.thumb:not(.add)');
+      if (!thumb) return;
+      dragFrom = Number(thumb.dataset.i);
+      e.dataTransfer.effectAllowed = 'move';
+      thumb.classList.add('dragging');
+    });
+    $('memo-media').addEventListener('dragend', () => {
+      dragFrom = null;
+      renderMemoMedia();
+    });
+    $('memo-media').addEventListener('dragover', (e) => {
+      if (dragFrom === null && ![...e.dataTransfer.types].includes('Files')) return;
+      e.preventDefault();
+      $('memo-media').classList.add('over');
+    });
+    $('memo-media').addEventListener('dragleave', (e) => {
+      if (!$('memo-media').contains(e.relatedTarget)) $('memo-media').classList.remove('over');
+    });
+    $('memo-media').addEventListener('drop', (e) => {
+      e.preventDefault();
+      $('memo-media').classList.remove('over');
+      if (e.dataTransfer.files?.length) return addMemoFiles(e.dataTransfer.files);
+      const target = e.target.closest('.thumb:not(.add)');
+      if (dragFrom === null || !target) return;
+      const to = Number(target.dataset.i);
+      memoMedia.splice(to, 0, ...memoMedia.splice(dragFrom, 1));
+      dragFrom = null;
+      renderMemoMedia();
+    });
+
+    // Paste anywhere in the form, the way people paste a screenshot.
+    memoForm.addEventListener('paste', (e) => {
+      const files = [...(e.clipboardData?.items || [])]
+        .filter((i) => i.kind === 'file')
+        .map((i) => i.getAsFile())
+        .filter(Boolean);
+      if (mediaFiles(files).length) {
+        e.preventDefault();
+        addMemoFiles(files);
+      }
+    });
+
+    const memoSnapshot = () => JSON.stringify([memoForm.title.value, memoMedia.map((i) => i.url), memoCaption.value]);
     const memoDirty = () => !memoForm.hidden && memoSnapshot() !== memoInitial;
     const timeOf = (ms) => new Date(ms).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -1141,8 +1332,29 @@
       }).join('');
     }
 
+    // Cards read like a feed post: every photo and video sits in one swipeable strip at the top,
+    // and whatever text the post has becomes the caption underneath.
+    function feedStrip(body) {
+      const urls = mediaUrls(body);
+      if (!urls.length) return '';
+      // The first one loads right away: its shape decides the frame, so a late load would jump.
+      const slide = (url, i) => `<div class="feed-item">${VIDEO_RE.test(url)
+        ? `<video src="${esc(url)}" controls preload="metadata" playsinline></video>`
+        : `<img src="${esc(url)}" alt=""${i ? ' loading="lazy"' : ''} />`}</div>`;
+      return `
+        <div class="feed"${urls.length > 1 ? ' data-many' : ''}>
+          <div class="feed-track">${urls.map(slide).join('')}</div>
+          ${urls.length > 1 ? `
+            <span class="feed-count">1 / ${urls.length}</span>
+            <button class="feed-nav prev" type="button" data-feed="-1" aria-label="이전 사진" hidden>‹</button>
+            <button class="feed-nav next" type="button" data-feed="1" aria-label="다음 사진">›</button>
+            <div class="feed-dots">${urls.map((_, i) => `<i class="feed-dot${i ? '' : ' on'}"></i>`).join('')}</div>` : ''}
+        </div>`;
+    }
+
     function memoCard(m) {
       const showComments = m.comments.length > 0 || openComments.has(m.id);
+      const caption = captionOf(m.body);
       return `
         <article class="memo" data-memo="${esc(m.id)}">
           <header class="memo-head">
@@ -1155,7 +1367,8 @@
               <button class="btn danger" type="button" data-memo-del="${esc(m.id)}">삭제</button>
             </div>
           </header>
-          ${m.body ? `<div class="memo-body">${renderBody(m.body, { links: true })}</div>` : ''}
+          ${feedStrip(m.body)}
+          ${caption ? `<div class="memo-body">${renderBody(caption, { links: true })}</div>` : ''}
           <footer class="memo-foot">
             <button class="react${m.liked ? ' on' : ''}" type="button" data-like="${esc(m.id)}" aria-pressed="${m.liked}">
               ${m.liked ? '❤️' : '🤍'} 좋아요${m.likes ? ` ${m.likes}` : ''}
@@ -1256,11 +1469,14 @@
       memoEditing = m ? { id: m.id, version: m.version } : null;
       $('memo-form-title').textContent = m ? '메모 수정' : '새 메모';
       memoForm.title.value = m?.title ?? '';
-      memoEditor.value = m?.body ?? '';
+      const body = m?.body ?? '';
+      memoMedia = mediaUrls(body).map((url) => ({ url, video: VIDEO_RE.test(url) }));
+      memoCaption.value = captionOf(body);
+      renderMemoMedia();
       memoInitial = memoSnapshot();
       memoForm.hidden = false;
       memoForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      (m ? $('memo-editor') : memoForm.title).focus({ preventScroll: true });
+      (m ? memoCaption : memoForm.title).focus({ preventScroll: true });
     }
 
     function closeMemoForm() {
@@ -1281,8 +1497,8 @@
 
     memoForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (memoEditor.uploading) return toast('사진을 올리는 중이에요. 잠시만 기다려 주세요.');
-      const post = { title: memoForm.title.value.trim(), body: memoEditor.value };
+      if (memoUploads) return toast('올리는 중이에요. 끝나면 저장할 수 있어요.');
+      const post = { title: memoForm.title.value.trim(), body: memoBody() };
       if (!post.title && !post.body.trim()) return toast('제목이나 내용을 입력해 주세요.', true);
 
       const submit = memoForm.querySelector('[type=submit]');
@@ -1316,13 +1532,18 @@
       } catch (err) {
         toast(err.message, true);
       } finally {
-        submit.disabled = memoEditor.uploading;
+        setMemoBusy();
       }
     });
 
     $('memo-list').addEventListener('click', async (e) => {
-      const img = e.target.closest('.memo-body img, .c-body img');
+      const img = e.target.closest('.memo-body img, .c-body img, .feed-item img');
       if (img) return window.open(img.src, '_blank', 'noopener');
+      const nav = e.target.closest('[data-feed]');
+      if (nav) {
+        const track = nav.closest('.feed').querySelector('.feed-track');
+        return track.scrollBy({ left: Number(nav.dataset.feed) * track.clientWidth, behavior: 'smooth' });
+      }
       const like = e.target.closest('[data-like]');
       if (like) return toggleLike(like.dataset.like);
       const cmt = e.target.closest('[data-comments]');
@@ -1361,6 +1582,19 @@
       }
     });
 
+    // Keep the counter, dots and arrows in step with whatever the strip is showing.
+    $('memo-list').addEventListener('scroll', (e) => {
+      const track = e.target.closest?.('.feed-track');
+      if (!track) return;
+      const feed = track.parentElement;
+      const at = Math.round(track.scrollLeft / track.clientWidth);
+      const last = track.children.length - 1;
+      feed.querySelector('.feed-count').textContent = `${at + 1} / ${last + 1}`;
+      feed.querySelectorAll('.feed-dot').forEach((dot, i) => dot.classList.toggle('on', i === at));
+      feed.querySelector('.feed-nav.prev').hidden = at === 0;
+      feed.querySelector('.feed-nav.next').hidden = at === last;
+    }, true);
+
     $('memo-list').addEventListener('submit', (e) => {
       const form = e.target.closest('[data-comment-form]');
       if (!form) return;
@@ -1374,9 +1608,6 @@
       if (memoDirty() && !confirm('작성 중인 내용을 버릴까요?')) return;
       closeMemoForm();
     });
-    for (const id of ['memo-image', 'memo-video']) keepSelection($(id));
-    $('memo-image').addEventListener('click', () => memoEditor.addImages());
-    $('memo-video').addEventListener('click', () => memoEditor.addVideo());
 
     // ---------- content form ----------
     // Each input carries data-path (e.g. "members.0.name"); edits write straight into `content`.
