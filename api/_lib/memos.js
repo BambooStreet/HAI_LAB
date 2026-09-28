@@ -1,6 +1,6 @@
 // Admin memo board: one row per post, so edits to different posts never collide.
 // `version` bumps on every edit; an update built on an older version is refused (conflict).
-// Comments and likes live in their own tables so they never touch a post's version.
+// Comments, likes and comment reactions live in their own tables so they never touch a post's version.
 import { hasDb, sql, once, getJSON, setJSON } from './store.js';
 
 const SEEDED_KEY = 'hai:memo-seeded'; // set once the default posts below have been added
@@ -16,6 +16,10 @@ export const cleanComment = (body) => str(body, 3000).trim();
 // Likes are counted per browser: the admin page keeps a random id in localStorage.
 export const CLIENT_RE = /^[\w-]{8,64}$/;
 
+// Emoji a comment can be reacted with. '👍' is what the 좋아요 button toggles.
+export const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🦆'];
+const byReaction = (a, b) => REACTIONS.indexOf(a.emoji) - REACTIONS.indexOf(b.emoji);
+
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const toMemo = (r) => ({
   id: r.id, title: r.title, body: r.body,
@@ -23,12 +27,14 @@ const toMemo = (r) => ({
 });
 const toComment = (r) => ({
   id: r.id, memoId: r.memo_id, parentId: r.parent_id || null, body: r.body, createdAt: Number(r.created_at),
+  reactions: [], // filled in by listMemos
 });
 
 // Local dev without DATABASE_URL.
 const memory = new Map();
 const memComments = new Map(); // id -> row
 const memLikes = new Set(); // `${memoId}\n${client}`
+const memReactions = new Set(); // `${commentId}\n${client}\n${emoji}`
 
 const tables = {};
 async function db() {
@@ -51,6 +57,12 @@ async function db() {
       created_at bigint NOT NULL
     )`;
     await q`CREATE INDEX IF NOT EXISTS hai_memo_comments_memo ON hai_memo_comments (memo_id)`;
+    await q`CREATE TABLE IF NOT EXISTS hai_comment_reactions (
+      comment_id text NOT NULL,
+      client text NOT NULL,
+      emoji text NOT NULL,
+      PRIMARY KEY (comment_id, client, emoji)
+    )`;
     await q`CREATE TABLE IF NOT EXISTS hai_memo_likes (
       memo_id text NOT NULL,
       client text NOT NULL,
@@ -126,7 +138,7 @@ export async function listMemos(client = '') {
   requireStore();
   await seedDefaults();
   await fixBlobUrls();
-  let memos, comments, likes;
+  let memos, comments, likes, reactions;
   if (!hasDb) {
     memos = [...memory.values()].map(toMemo).sort((a, b) => b.createdAt - a.createdAt);
     comments = [...memComments.values()].map(toComment).sort((a, b) => a.createdAt - b.createdAt);
@@ -139,16 +151,35 @@ export async function listMemos(client = '') {
       counts.set(memoId, c);
     }
     likes = [...counts.values()];
+    const tally = new Map();
+    for (const key of memReactions) {
+      const [commentId, who, emoji] = key.split('\n');
+      const k = `${commentId}\n${emoji}`;
+      const r = tally.get(k) ?? { comment_id: commentId, emoji, n: 0, mine: false };
+      r.n += 1;
+      r.mine ||= who === client;
+      tally.set(k, r);
+    }
+    reactions = [...tally.values()];
   } else {
     const q = await db();
-    [memos, comments, likes] = await Promise.all([
+    [memos, comments, likes, reactions] = await Promise.all([
       q`SELECT * FROM hai_memos ORDER BY created_at DESC LIMIT 500`.then((rows) => rows.map(toMemo)),
       q`SELECT * FROM hai_memo_comments ORDER BY created_at`.then((rows) => rows.map(toComment)),
       q`SELECT memo_id, count(*)::int AS n, bool_or(client = ${client}) AS liked FROM hai_memo_likes GROUP BY memo_id`,
+      q`SELECT comment_id, emoji, count(*)::int AS n, bool_or(client = ${client}) AS mine
+        FROM hai_comment_reactions GROUP BY comment_id, emoji`,
     ]);
   }
   const byMemo = new Map(memos.map((m) => [m.id, { ...m, comments: [], likes: 0, liked: false }]));
-  for (const c of comments) byMemo.get(c.memoId)?.comments.push(c);
+  const byComment = new Map(comments.map((c) => [c.id, c]));
+  for (const r of reactions) {
+    byComment.get(r.comment_id)?.reactions.push({ emoji: r.emoji, n: Number(r.n), mine: Boolean(r.mine) });
+  }
+  for (const c of comments) {
+    c.reactions.sort(byReaction);
+    byMemo.get(c.memoId)?.comments.push(c);
+  }
   for (const l of likes) {
     const m = byMemo.get(l.memo_id);
     if (m) Object.assign(m, { likes: Number(l.n), liked: Boolean(l.liked) });
@@ -203,11 +234,16 @@ export async function deleteMemo(id) {
   requireStore();
   if (!hasDb) {
     memory.delete(id);
-    for (const [cid, c] of memComments) if (c.memo_id === id) memComments.delete(cid);
+    for (const [cid, c] of memComments) {
+      if (c.memo_id !== id) continue;
+      memComments.delete(cid);
+      for (const key of memReactions) if (key.startsWith(`${cid}\n`)) memReactions.delete(key);
+    }
     for (const key of memLikes) if (key.startsWith(`${id}\n`)) memLikes.delete(key);
     return;
   }
   const q = await db();
+  await q`DELETE FROM hai_comment_reactions WHERE comment_id IN (SELECT id FROM hai_memo_comments WHERE memo_id = ${id})`;
   await q`DELETE FROM hai_memo_comments WHERE memo_id = ${id}`;
   await q`DELETE FROM hai_memo_likes WHERE memo_id = ${id}`;
   await q`DELETE FROM hai_memos WHERE id = ${id}`;
@@ -251,23 +287,28 @@ export async function strayRows(remove = false) {
     const live = new Set(memory.keys());
     const comments = [...memComments.values()].filter((c) => !live.has(c.memo_id));
     const likes = [...memLikes].filter((k) => !live.has(k.split('\n')[0]));
+    const gone = new Set(comments.map((c) => c.id));
+    const reactions = [...memReactions].filter((k) => !memComments.has(k.split('\n')[0]) || gone.has(k.split('\n')[0]));
     if (remove) {
       for (const c of comments) memComments.delete(c.id);
       for (const k of likes) memLikes.delete(k);
+      for (const k of reactions) memReactions.delete(k);
     }
-    return { comments: comments.length, likes: likes.length };
+    return { comments: comments.length, likes: likes.length + reactions.length };
   }
   const q = await db();
   if (remove) {
+    await q`DELETE FROM hai_comment_reactions WHERE comment_id NOT IN (SELECT id FROM hai_memo_comments)`;
     await q`DELETE FROM hai_memo_comments WHERE memo_id NOT IN (SELECT id FROM hai_memos)`;
     await q`DELETE FROM hai_memo_likes WHERE memo_id NOT IN (SELECT id FROM hai_memos)`;
     return { comments: 0, likes: 0, cleaned: true };
   }
-  const [[c], [l]] = await Promise.all([
+  const [[c], [l], [r]] = await Promise.all([
     q`SELECT count(*)::int AS n FROM hai_memo_comments WHERE memo_id NOT IN (SELECT id FROM hai_memos)`,
     q`SELECT count(*)::int AS n FROM hai_memo_likes WHERE memo_id NOT IN (SELECT id FROM hai_memos)`,
+    q`SELECT count(*)::int AS n FROM hai_comment_reactions WHERE comment_id NOT IN (SELECT id FROM hai_memo_comments)`,
   ]);
-  return { comments: Number(c.n), likes: Number(l.n) };
+  return { comments: Number(c.n), likes: Number(l.n) + Number(r.n) };
 }
 
 // Posts with no photo, no video and no text — nothing to show. Reported only; deleting a post
@@ -281,11 +322,50 @@ export async function emptyMemos() {
 export async function deleteComment(id) {
   requireStore();
   if (!hasDb) {
-    for (const [cid, c] of memComments) if (cid === id || c.parent_id === id) memComments.delete(cid);
+    for (const [cid, c] of memComments) {
+      if (cid !== id && c.parent_id !== id) continue;
+      memComments.delete(cid);
+      for (const key of memReactions) if (key.startsWith(`${cid}\n`)) memReactions.delete(key);
+    }
     return;
   }
   const q = await db();
+  await q`DELETE FROM hai_comment_reactions
+    WHERE comment_id IN (SELECT id FROM hai_memo_comments WHERE id = ${id} OR parent_id = ${id})`;
   await q`DELETE FROM hai_memo_comments WHERE id = ${id} OR parent_id = ${id}`;
+}
+
+// React / un-react with one emoji. Returns that comment's reactions, or null when it is gone.
+export async function setReaction(commentId, client, emoji, on) {
+  requireStore();
+  if (!REACTIONS.includes(emoji)) return null;
+  if (!(await findComment(commentId))) return null;
+  const key = `${commentId}\n${client}\n${emoji}`;
+  if (!hasDb) {
+    if (on) memReactions.add(key);
+    else memReactions.delete(key);
+    const tally = new Map();
+    for (const k of memReactions) {
+      const [id, who, e] = k.split('\n');
+      if (id !== commentId) continue;
+      const r = tally.get(e) ?? { emoji: e, n: 0, mine: false };
+      r.n += 1;
+      r.mine ||= who === client;
+      tally.set(e, r);
+    }
+    return [...tally.values()].sort(byReaction);
+  }
+  const q = await db();
+  if (on) {
+    await q`INSERT INTO hai_comment_reactions (comment_id, client, emoji)
+      VALUES (${commentId}, ${client}, ${emoji}) ON CONFLICT DO NOTHING`;
+  } else {
+    await q`DELETE FROM hai_comment_reactions
+      WHERE comment_id = ${commentId} AND client = ${client} AND emoji = ${emoji}`;
+  }
+  const rows = await q`SELECT emoji, count(*)::int AS n, bool_or(client = ${client}) AS mine
+    FROM hai_comment_reactions WHERE comment_id = ${commentId} GROUP BY emoji`;
+  return rows.map((r) => ({ emoji: r.emoji, n: Number(r.n), mine: Boolean(r.mine) })).sort(byReaction);
 }
 
 // Like or unlike; idempotent either way. Returns { likes, liked }, or null when the memo is gone.

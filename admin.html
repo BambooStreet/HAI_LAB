@@ -328,6 +328,20 @@
     .c-row { display: flex; gap: 6px; }
     .c-row input { flex: 1; padding: 8px 12px; font-size: 0.9rem; }
     .c-media:empty { display: none; }
+    .c-reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .react-chip, .react-add {
+      border: 1px solid var(--line); background: var(--surface); color: var(--text);
+      border-radius: 999px; padding: 1px 8px; font-size: 0.8rem; line-height: 1.6;
+    }
+    .react-chip:hover, .react-add:hover { border-color: var(--accent); }
+    .react-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+    .react-add { color: var(--muted); }
+    .emoji-bar {
+      display: flex; flex-wrap: wrap; gap: 2px; padding: 4px;
+      border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+    }
+    .emoji-bar button { border: none; background: none; font-size: 1.1rem; padding: 2px 5px; border-radius: 6px; }
+    .emoji-bar button:hover { background: var(--accent-soft); }
     .c-media .thumbs { padding: 0; }
     .c-media .thumb { width: 56px; height: 56px; }
 
@@ -1420,6 +1434,12 @@
 
     let replyTo = null; // top-level comment id whose reply box is open
 
+    // Reactions on comments. The server accepts only these, and '👍' is the 좋아요 button.
+    const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🦆'];
+    // Emoji the 🙂 button drops into the comment text (anything goes there, it is just text).
+    const TEXT_EMOJI = [...REACTIONS, '🙏', '🎉', '😅', '🤔', '😭', '💦', '🐟', '🐦', '☕', '💯'];
+    let reactPickerFor = null; // comment id whose emoji picker is open
+
     // ---------- comment photos ----------
     // Photos attached to a comment being written, keyed per comment box. They are appended to the
     // comment text as ![](url) on submit, which is what renderBody already draws.
@@ -1470,6 +1490,76 @@
 
     const formKey = (form) => commentKey(form.dataset.commentForm, form.dataset.parent);
 
+    // Reactions and the emoji picker. Only the affected comment (or the form's emoji bar) is
+    // redrawn, so a half-written comment elsewhere in the card survives.
+    function findComment(commentId) {
+      for (const m of memos) {
+        const c = m.comments.find((x) => x.id === commentId);
+        if (c) return { memo: m, comment: c };
+      }
+      return null;
+    }
+
+    function renderReactions(commentId) {
+      const found = findComment(commentId);
+      const el = $('memo-list').querySelector(`[data-reacts="${CSS.escape(commentId)}"]`);
+      if (!found || !el) return;
+      el.outerHTML = reactionRow(found.comment);
+      const like = [...$('memo-list').querySelectorAll(`.c-meta [data-react="${CSS.escape(commentId)}"]`)]
+        .find((b) => b.dataset.emoji === '👍');
+      if (like) like.textContent = liked(found.comment) ? '좋아요 취소' : '좋아요';
+    }
+
+    async function toggleReaction(commentId, emoji) {
+      const found = findComment(commentId);
+      if (!found) return;
+      const { comment } = found;
+      const current = comment.reactions?.find((r) => r.emoji === emoji);
+      const on = !current?.mine;
+      reactPickerFor = null;
+      // Show it straight away, then let the server's count win.
+      comment.reactions = [
+        ...(comment.reactions ?? []).filter((r) => r.emoji !== emoji),
+        { emoji, n: (current?.n ?? 0) + (on ? 1 : -1), mine: on },
+      ].filter((r) => r.n > 0).sort((a, b) => REACTIONS.indexOf(a.emoji) - REACTIONS.indexOf(b.emoji));
+      renderReactions(commentId);
+      const r = await memoAction('/api/memo?action=react', 'POST', { commentId, emoji, on });
+      if (r) comment.reactions = r.reactions;
+      renderReactions(commentId);
+    }
+
+    $('memo-list').addEventListener('click', (e) => {
+      const react = e.target.closest('[data-react]');
+      if (react) {
+        e.preventDefault();
+        return toggleReaction(react.dataset.react, react.dataset.emoji);
+      }
+      const pick = e.target.closest('[data-react-pick]');
+      if (pick) {
+        const id = pick.dataset.reactPick;
+        const was = reactPickerFor;
+        reactPickerFor = was === id ? null : id;
+        if (was) renderReactions(was);
+        if (reactPickerFor) renderReactions(reactPickerFor);
+        return;
+      }
+      // Emoji into the comment text, at the cursor.
+      const form = e.target.closest('[data-comment-form]');
+      if (!form) return;
+      const bar = form.querySelector('[data-emoji-bar]');
+      if (e.target.closest('[data-emoji-open]')) {
+        bar.hidden = !bar.hidden;
+        if (!bar.hidden) form.body.focus();
+        return;
+      }
+      const insert = e.target.closest('[data-emoji-insert]');
+      if (!insert) return;
+      const input = form.body;
+      const at = input.selectionEnd ?? input.value.length;
+      input.setRangeText(insert.dataset.emojiInsert, at, at, 'end');
+      input.focus();
+    });
+
     $('memo-list').addEventListener('click', async (e) => {
       const form = e.target.closest('[data-comment-form]');
       if (!form) return;
@@ -1508,18 +1598,33 @@
     const commentForm = (memoId, parentId = '') => `
       <form class="comment-form${parentId ? ' reply-form' : ''}" data-comment-form="${esc(memoId)}" data-parent="${esc(parentId)}" autocomplete="off">
         ${commentMediaHtml(commentKey(memoId, parentId))}
+        <div class="emoji-bar" data-emoji-bar hidden>${TEXT_EMOJI.map((e) => `<button type="button" data-emoji-insert="${e}">${e}</button>`).join('')}</div>
         <div class="c-row">
           <input name="body" maxlength="2000" placeholder="${parentId ? '답글 달기…' : '댓글 달기…'}" aria-label="${parentId ? '답글' : '댓글'}" />
+          <button class="btn icon" type="button" data-emoji-open title="이모티콘" aria-label="이모티콘">🙂</button>
           <button class="btn icon" type="button" data-comment-add title="사진 넣기" aria-label="사진 넣기">📷</button>
           <button class="btn" type="submit">등록</button>
         </div>
       </form>`;
 
     // A reply's 답글 button replies within the same thread (its top-level comment).
+    const liked = (c) => (c.reactions ?? []).some((r) => r.emoji === '👍' && r.mine);
+
+    const reactionRow = (c) => `
+      <div class="c-reacts" data-reacts="${esc(c.id)}">
+        ${(c.reactions ?? []).filter((r) => r.n > 0).map((r) => `
+          <button class="react-chip${r.mine ? ' on' : ''}" type="button" data-react="${esc(c.id)}" data-emoji="${esc(r.emoji)}"
+                  aria-pressed="${r.mine}" title="${r.mine ? '반응 빼기' : '나도 반응하기'}">${r.emoji} ${r.n}</button>`).join('')}
+        <button class="react-add" type="button" data-react-pick="${esc(c.id)}" aria-label="반응 추가">🙂＋</button>
+        ${reactPickerFor === c.id ? `<div class="emoji-bar">${REACTIONS.map((e) => `
+          <button type="button" data-react="${esc(c.id)}" data-emoji="${e}">${e}</button>`).join('')}</div>` : ''}
+      </div>`;
+
     const commentItem = (c, threadId) => `
       <li>
         <div class="c-body">${renderBody(c.body, { links: true })}</div>
-        <div class="c-meta">${timeOf(c.createdAt)} · <button type="button" data-reply="${esc(threadId)}">답글</button> · <button type="button" data-comment-del="${esc(c.id)}">삭제</button></div>
+        ${reactionRow(c)}
+        <div class="c-meta">${timeOf(c.createdAt)} · <button type="button" data-react="${esc(c.id)}" data-emoji="👍">${liked(c) ? '좋아요 취소' : '좋아요'}</button> · <button type="button" data-reply="${esc(threadId)}">답글</button> · <button type="button" data-comment-del="${esc(c.id)}">삭제</button></div>
       </li>`;
 
     function commentThreads(m) {

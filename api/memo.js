@@ -2,11 +2,12 @@
 //   GET                          list (with comments and likes)
 //   POST                         create a memo          PUT  update a memo (with its version)
 //   POST ?action=comment         add a comment          POST ?action=like  like / unlike
+//   POST ?action=react           react to a comment with one emoji (toggle)
 //   DELETE ?id=<memo>            delete a memo          DELETE ?comment=<id>  delete a comment
 import { send, isAdmin, readBody } from './_lib/http.js';
 import {
   listMemos, createMemo, updateMemo, deleteMemo, cleanMemo,
-  addComment, deleteComment, cleanComment, setLike, CLIENT_RE, strayRows, emptyMemos,
+  addComment, deleteComment, cleanComment, setLike, setReaction, CLIENT_RE, strayRows, emptyMemos,
 } from './_lib/memos.js';
 
 const GONE = '이미 삭제된 글입니다.';
@@ -42,6 +43,13 @@ export default async function handler(req, res) {
       const body = readBody(req);
       const result = await setLike(String(body.memoId ?? ''), client, body.like === true);
       return result ? send(res, 200, result) : send(res, 404, { error: GONE });
+    }
+
+    if (req.method === 'POST' && query.get('action') === 'react') {
+      if (!client) return send(res, 400, { error: '브라우저 정보를 확인할 수 없습니다.' });
+      const body = readBody(req);
+      const reactions = await setReaction(String(body.commentId ?? ''), client, String(body.emoji ?? ''), body.on === true);
+      return reactions ? send(res, 200, { reactions }) : send(res, 404, { error: '이미 삭제된 댓글입니다.' });
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
