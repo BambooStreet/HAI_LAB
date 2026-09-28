@@ -324,8 +324,12 @@
     .c-meta { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
     .c-meta button { background: none; border: none; padding: 0; color: var(--muted); font-size: inherit; text-decoration: underline; }
     .c-meta button:hover { color: var(--danger); }
-    .comment-form { display: flex; gap: 6px; }
-    .comment-form input { padding: 8px 12px; font-size: 0.9rem; }
+    .comment-form { display: grid; gap: 6px; }
+    .c-row { display: flex; gap: 6px; }
+    .c-row input { flex: 1; padding: 8px 12px; font-size: 0.9rem; }
+    .c-media:empty { display: none; }
+    .c-media .thumbs { padding: 0; }
+    .c-media .thumb { width: 56px; height: 56px; }
 
     @media (max-width: 640px) {
       .grid-2, .row-fields { grid-template-columns: 1fr; }
@@ -1416,10 +1420,99 @@
 
     let replyTo = null; // top-level comment id whose reply box is open
 
+    // ---------- comment photos ----------
+    // Photos attached to a comment being written, keyed per comment box. They are appended to the
+    // comment text as ![](url) on submit, which is what renderBody already draws.
+    const COMMENT_MAX = 4;
+    const commentMedia = new Map(); // `${memoId}\n${parentId}` -> [{ url, uploading, preview }]
+    const commentKey = (memoId, parentId = '') => `${memoId}\n${parentId}`;
+    const commentItems = (key) => commentMedia.get(key) ?? [];
+
+    const commentMediaHtml = (key) => {
+      const items = commentItems(key);
+      return `<div class="c-media" data-comment-media="${esc(key)}">${items.length ? `<div class="thumbs">${items.map((item, i) => `
+        <div class="thumb${item.uploading ? ' busy' : ''}">
+          <img src="${esc(item.url || item.preview)}" alt="" />
+          ${item.uploading
+            ? '<span class="pct">…</span>'
+            : `<button class="thumb-x" type="button" data-comment-drop="${i}" aria-label="빼기">✕</button>`}
+        </div>`).join('')}</div>` : ''}</div>`;
+    };
+
+    function renderCommentMedia(key) {
+      const el = $('memo-list').querySelector(`[data-comment-media="${CSS.escape(key)}"]`);
+      if (el) el.outerHTML = commentMediaHtml(key);
+    }
+
+    async function addCommentFiles(key, list) {
+      const files = [...(list || [])].filter((f) => f.type?.startsWith('image/'));
+      if (!files.length) return;
+      const items = commentMedia.get(key) ?? [];
+      commentMedia.set(key, items);
+      const room = COMMENT_MAX - items.length;
+      if (files.length > room) toast(`댓글 사진은 ${COMMENT_MAX}장까지예요.`, true);
+      for (const file of files.slice(0, room)) {
+        const item = { uploading: true, preview: URL.createObjectURL(file) };
+        items.push(item);
+        renderCommentMedia(key);
+        try {
+          item.url = await uploadImage(file);
+          item.uploading = false;
+        } catch (err) {
+          items.splice(items.indexOf(item), 1);
+          toast(err.message, true);
+        } finally {
+          URL.revokeObjectURL(item.preview);
+          renderCommentMedia(key);
+        }
+      }
+    }
+
+    const formKey = (form) => commentKey(form.dataset.commentForm, form.dataset.parent);
+
+    $('memo-list').addEventListener('click', async (e) => {
+      const form = e.target.closest('[data-comment-form]');
+      if (!form) return;
+      if (e.target.closest('[data-comment-add]')) {
+        return addCommentFiles(formKey(form), await pickFiles('image/*', true));
+      }
+      const drop = e.target.closest('[data-comment-drop]');
+      if (!drop) return;
+      const key = formKey(form);
+      commentItems(key).splice(Number(drop.dataset.commentDrop), 1);
+      renderCommentMedia(key);
+    });
+
+    $('memo-list').addEventListener('paste', (e) => {
+      const form = e.target.closest('[data-comment-form]');
+      if (!form) return;
+      const files = [...(e.clipboardData?.items || [])]
+        .filter((i) => i.kind === 'file' && i.type.startsWith('image/'))
+        .map((i) => i.getAsFile())
+        .filter(Boolean);
+      if (!files.length) return;
+      e.preventDefault();
+      addCommentFiles(formKey(form), files);
+    });
+
+    $('memo-list').addEventListener('dragover', (e) => {
+      if (e.target.closest('[data-comment-form]') && [...e.dataTransfer.types].includes('Files')) e.preventDefault();
+    });
+    $('memo-list').addEventListener('drop', (e) => {
+      const form = e.target.closest('[data-comment-form]');
+      if (!form || !e.dataTransfer.files?.length) return;
+      e.preventDefault();
+      addCommentFiles(formKey(form), e.dataTransfer.files);
+    });
+
     const commentForm = (memoId, parentId = '') => `
       <form class="comment-form${parentId ? ' reply-form' : ''}" data-comment-form="${esc(memoId)}" data-parent="${esc(parentId)}" autocomplete="off">
-        <input name="body" maxlength="2000" placeholder="${parentId ? '답글 달기…' : '댓글 달기…'}" aria-label="${parentId ? '답글' : '댓글'}" required />
-        <button class="btn" type="submit">등록</button>
+        ${commentMediaHtml(commentKey(memoId, parentId))}
+        <div class="c-row">
+          <input name="body" maxlength="2000" placeholder="${parentId ? '답글 달기…' : '댓글 달기…'}" aria-label="${parentId ? '답글' : '댓글'}" />
+          <button class="btn icon" type="button" data-comment-add title="사진 넣기" aria-label="사진 넣기">📷</button>
+          <button class="btn" type="submit">등록</button>
+        </div>
       </form>`;
 
     // A reply's 답글 button replies within the same thread (its top-level comment).
@@ -1543,13 +1636,17 @@
       const id = form.dataset.commentForm;
       const parentId = form.dataset.parent;
       const input = form.body;
-      const text = input.value.trim();
-      if (!text) return;
+      const key = commentKey(id, parentId);
+      const items = commentItems(key);
+      if (items.some((i) => i.uploading)) return toast('사진을 올리는 중이에요. 잠시만요.', true);
+      const body = [input.value.trim(), ...items.map((i) => `![](${i.url})`)].filter(Boolean).join('\n');
+      if (!body) return;
       input.disabled = true;
-      const r = await memoAction('/api/memo?action=comment', 'POST', { memoId: id, body: text, parentId });
+      const r = await memoAction('/api/memo?action=comment', 'POST', { memoId: id, body, parentId });
       input.disabled = false;
       const m = memos.find((x) => x.id === id);
       if (!r || !m) return input.focus();
+      commentMedia.delete(key);
       m.comments.push(r.comment);
       openComments.add(id);
       if (parentId) replyTo = null; // reply posted: close the reply box

@@ -10,7 +10,8 @@ export function cleanMemo(input) {
   const m = input && typeof input === 'object' ? input : {};
   return { title: str(m.title, 200).trim(), body: str(m.body, 50000).replace(/\s+$/, '') };
 }
-export const cleanComment = (body) => str(body, 2000).trim();
+// 2000 of text in the box, plus room for up to 4 attached photo links.
+export const cleanComment = (body) => str(body, 3000).trim();
 
 // Likes are counted per browser: the admin page keeps a random id in localStorage.
 export const CLIENT_RE = /^[\w-]{8,64}$/;
