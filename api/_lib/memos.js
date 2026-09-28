@@ -17,7 +17,7 @@ export const cleanComment = (body) => str(body, 3000).trim();
 export const CLIENT_RE = /^[\w-]{8,64}$/;
 
 // Emoji a comment can be reacted with. '👍' is what the 좋아요 button toggles.
-export const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🦆'];
+export const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '🦆', '🦢', '🕊️', '🐦‍⬛', '🐟'];
 const byReaction = (a, b) => REACTIONS.indexOf(a.emoji) - REACTIONS.indexOf(b.emoji);
 
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
