@@ -329,18 +329,18 @@
     .c-row input { flex: 1; padding: 8px 12px; font-size: 0.9rem; }
     .c-media:empty { display: none; }
     .c-reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-    .react-chip, .react-add {
+    .react-chip {
       border: 1px solid var(--line); background: var(--surface); color: var(--text);
       border-radius: 999px; padding: 1px 8px; font-size: 0.8rem; line-height: 1.6;
     }
-    .react-chip:hover, .react-add:hover { border-color: var(--accent); }
+    .react-chip:hover { border-color: var(--accent); }
     .react-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-    .react-add { color: var(--muted); }
+    .c-meta .on { color: var(--accent); }
     .emoji-bar {
-      display: flex; flex-wrap: wrap; gap: 2px; padding: 4px;
+      display: flex; flex-wrap: wrap; gap: 2px; padding: 4px; margin-top: 4px; width: fit-content; max-width: 100%;
       border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
     }
-    .emoji-bar button { border: none; background: none; font-size: 1.1rem; padding: 2px 5px; border-radius: 6px; }
+    .emoji-bar button { border: none; background: none; font-size: 1.15rem; padding: 3px 6px; border-radius: 8px; }
     .emoji-bar button:hover { background: var(--accent-soft); }
     .c-media .thumbs { padding: 0; }
     .c-media .thumb { width: 56px; height: 56px; }
@@ -1500,14 +1500,10 @@
       return null;
     }
 
-    function renderReactions(commentId) {
+    function renderComment(commentId) {
       const found = findComment(commentId);
-      const el = $('memo-list').querySelector(`[data-reacts="${CSS.escape(commentId)}"]`);
-      if (!found || !el) return;
-      el.outerHTML = reactionRow(found.comment);
-      const like = [...$('memo-list').querySelectorAll(`.c-meta [data-react="${CSS.escape(commentId)}"]`)]
-        .find((b) => b.dataset.emoji === '👍');
-      if (like) like.textContent = liked(found.comment) ? '좋아요 취소' : '좋아요';
+      const el = $('memo-list').querySelector(`[data-comment="${CSS.escape(commentId)}"]`);
+      if (found && el) el.outerHTML = commentItem(found.comment, el.dataset.thread);
     }
 
     async function toggleReaction(commentId, emoji) {
@@ -1522,10 +1518,10 @@
         ...(comment.reactions ?? []).filter((r) => r.emoji !== emoji),
         { emoji, n: (current?.n ?? 0) + (on ? 1 : -1), mine: on },
       ].filter((r) => r.n > 0).sort((a, b) => REACTIONS.indexOf(a.emoji) - REACTIONS.indexOf(b.emoji));
-      renderReactions(commentId);
+      renderComment(commentId);
       const r = await memoAction('/api/memo?action=react', 'POST', { commentId, emoji, on });
       if (r) comment.reactions = r.reactions;
-      renderReactions(commentId);
+      renderComment(commentId);
     }
 
     $('memo-list').addEventListener('click', (e) => {
@@ -1539,8 +1535,8 @@
         const id = pick.dataset.reactPick;
         const was = reactPickerFor;
         reactPickerFor = was === id ? null : id;
-        if (was) renderReactions(was);
-        if (reactPickerFor) renderReactions(reactPickerFor);
+        if (was) renderComment(was);
+        if (reactPickerFor) renderComment(reactPickerFor);
         return;
       }
       // Emoji into the comment text, at the cursor.
@@ -1610,21 +1606,19 @@
     // A reply's 답글 button replies within the same thread (its top-level comment).
     const liked = (c) => (c.reactions ?? []).some((r) => r.emoji === '👍' && r.mine);
 
-    const reactionRow = (c) => `
-      <div class="c-reacts" data-reacts="${esc(c.id)}">
-        ${(c.reactions ?? []).filter((r) => r.n > 0).map((r) => `
-          <button class="react-chip${r.mine ? ' on' : ''}" type="button" data-react="${esc(c.id)}" data-emoji="${esc(r.emoji)}"
-                  aria-pressed="${r.mine}" title="${r.mine ? '반응 빼기' : '나도 반응하기'}">${r.emoji} ${r.n}</button>`).join('')}
-        <button class="react-add" type="button" data-react-pick="${esc(c.id)}" aria-label="반응 추가">🙂＋</button>
-        ${reactPickerFor === c.id ? `<div class="emoji-bar">${REACTIONS.map((e) => `
-          <button type="button" data-react="${esc(c.id)}" data-emoji="${e}">${e}</button>`).join('')}</div>` : ''}
-      </div>`;
+    const chips = (c) => (c.reactions ?? []).filter((r) => r.n > 0).map((r) => `
+      <button class="react-chip${r.mine ? ' on' : ''}" type="button" data-react="${esc(c.id)}" data-emoji="${esc(r.emoji)}"
+              aria-pressed="${r.mine}" title="${r.mine ? '반응 빼기' : '나도 반응하기'}">${r.emoji} ${r.n}</button>`).join('');
 
+    // One comment. Reaction chips sit under the text; 좋아요 / 이모티콘 live in the meta row, and
+    // the emoji picker only appears while 이모티콘 is open.
     const commentItem = (c, threadId) => `
-      <li>
+      <li data-comment="${esc(c.id)}" data-thread="${esc(threadId)}">
         <div class="c-body">${renderBody(c.body, { links: true })}</div>
-        ${reactionRow(c)}
-        <div class="c-meta">${timeOf(c.createdAt)} · <button type="button" data-react="${esc(c.id)}" data-emoji="👍">${liked(c) ? '좋아요 취소' : '좋아요'}</button> · <button type="button" data-reply="${esc(threadId)}">답글</button> · <button type="button" data-comment-del="${esc(c.id)}">삭제</button></div>
+        ${c.reactions?.some((r) => r.n > 0) ? `<div class="c-reacts">${chips(c)}</div>` : ''}
+        <div class="c-meta">${timeOf(c.createdAt)} · <button type="button" data-react="${esc(c.id)}" data-emoji="👍">${liked(c) ? '좋아요 취소' : '좋아요'}</button> · <button type="button" class="${reactPickerFor === c.id ? 'on' : ''}" data-react-pick="${esc(c.id)}">이모티콘</button> · <button type="button" data-reply="${esc(threadId)}">답글</button> · <button type="button" data-comment-del="${esc(c.id)}">삭제</button></div>
+        ${reactPickerFor === c.id ? `<div class="emoji-bar">${REACTIONS.map((e) => `
+          <button type="button" data-react="${esc(c.id)}" data-emoji="${e}" title="${e}">${e}</button>`).join('')}</div>` : ''}
       </li>`;
 
     function commentThreads(m) {
