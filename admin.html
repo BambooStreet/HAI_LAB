@@ -237,8 +237,37 @@
     .feed:hover .feed-zoom, .feed-zoom:focus-visible { opacity: 1; }
     @media (hover: none) { .feed-zoom { opacity: 1; } }
 
+    /* Memo composer dialog */
+    #memo-dialog {
+      /* the global `* { margin: 0 }` reset removes a dialog's own centering */
+      margin: auto;
+      width: min(620px, 94vw); max-height: 90vh; padding: 0; border: 1px solid var(--line);
+      border-radius: 16px; background: var(--surface); color: var(--text); overflow: hidden;
+    }
+    #memo-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+    #memo-dialog[open] { display: flex; }
+    #memo-form { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+    .dialog-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 16px 20px; border-bottom: 1px solid var(--line);
+    }
+    .dialog-head h3 { margin: 0; }
+    .dialog-body {
+      flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px 4px;
+      display: flex; flex-direction: column;
+    }
+    /* the caption takes whatever room is left, so a phone screen isn't half empty */
+    .dialog-body .caption-field { flex: 1; display: flex; flex-direction: column; min-height: 120px; }
+    .dialog-body .caption-field textarea { flex: 1; }
+    #memo-form .form-actions { padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface); }
+
+    @media (max-width: 640px) {
+      #memo-dialog { width: 100vw; max-width: none; max-height: 100dvh; height: 100dvh; border-radius: 0; }
+    }
+
     /* Lightbox */
     #lightbox {
+      margin: auto;
       width: 96vw; max-width: 1100px; height: 92vh; padding: 0; border: none; border-radius: 16px;
       background: #0b0f0e; color: var(--text); overflow: hidden;
       flex-direction: column; /* only applies while open, when display becomes flex */
@@ -391,21 +420,28 @@
 
       <!-- Memo tab -->
       <div id="tab-memo" hidden>
-        <form class="card" id="memo-form" hidden autocomplete="off">
-          <h3 id="memo-form-title">새 메모</h3>
+        <dialog id="memo-dialog" aria-labelledby="memo-form-title">
+        <form id="memo-form" autocomplete="off">
+          <div class="dialog-head">
+            <h3 id="memo-form-title">새 메모</h3>
+            <button class="btn icon" type="button" id="memo-close" aria-label="닫기">✕</button>
+          </div>
+          <div class="dialog-body">
           <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
           <div class="media-field">
             <span class="field-label">사진 · 동영상</span>
             <div id="memo-media"></div>
             <p class="hint" id="memo-media-hint">끌어다 놓거나 붙여넣기(Ctrl+V)로도 올릴 수 있어요. 여러 장이면 끌어서 순서를 바꿀 수 있고, 맨 앞 것이 피드에 먼저 보입니다.</p>
           </div>
-          <label><span>설명</span><textarea id="memo-caption" rows="4" maxlength="50000"
+          <label class="caption-field"><span>설명</span><textarea id="memo-caption" rows="4" maxlength="50000"
             placeholder="사진에 대한 설명을 적어보세요. 주소를 붙여넣으면 링크가 됩니다."></textarea></label>
+          </div>
           <div class="form-actions">
             <button class="btn" type="button" id="memo-cancel">취소</button>
             <button class="btn primary" type="submit">저장</button>
           </div>
         </form>
+        </dialog>
 
         <div class="toolbar">
           <span class="count" id="memo-count"></span>
@@ -1297,6 +1333,7 @@
     // Admin-only posts. Each save carries the version it was based on; if someone else saved
     // the same post in between, the server answers 409 and we ask before overwriting.
     const memoForm = $('memo-form');
+    const memoDialog = $('memo-dialog');
     let memos = [];
     let memoLoaded = false;
     let memoEditing = null; // { id, version } while editing an existing post
@@ -1426,7 +1463,7 @@
     });
 
     const memoSnapshot = () => JSON.stringify([memoForm.title.value, memoMedia.map((i) => i.url), memoCaption.value]);
-    const memoDirty = () => !memoForm.hidden && memoSnapshot() !== memoInitial;
+    const memoDirty = () => memoDialog.open && memoSnapshot() !== memoInitial;
     const timeOf = (ms) => new Date(ms).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
 
     const openComments = new Set(); // memo ids whose comment box the user opened
@@ -1785,15 +1822,31 @@
       memoCaption.value = captionOf(body);
       renderMemoMedia();
       memoInitial = memoSnapshot();
-      memoForm.hidden = false;
-      memoForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!memoDialog.open) memoDialog.showModal();
       (m ? memoCaption : memoForm.title).focus({ preventScroll: true });
     }
 
     function closeMemoForm() {
-      memoForm.hidden = true;
       memoEditing = null;
+      if (memoDialog.open) memoDialog.close();
     }
+
+    // Esc, the ✕ and a click on the backdrop all go through the same question.
+    function askToCloseMemoForm() {
+      if (memoUploads && !confirm('올리는 중인 파일이 있어요. 그만두고 닫을까요?')) return false;
+      if (memoDirty() && !confirm('작성 중인 내용을 버릴까요?')) return false;
+      closeMemoForm();
+      return true;
+    }
+
+    memoDialog.addEventListener('cancel', (e) => { // Esc
+      e.preventDefault();
+      askToCloseMemoForm();
+    });
+    memoDialog.addEventListener('click', (e) => {
+      if (e.target === memoDialog) askToCloseMemoForm();
+    });
+    $('memo-close').addEventListener('click', askToCloseMemoForm);
 
     async function sendMemo(method, body) {
       const res = await fetch('/api/memo', {
@@ -1972,10 +2025,7 @@
 
     $('memo-new').addEventListener('click', () => openMemoForm(null));
     $('memo-refresh').addEventListener('click', loadMemos);
-    $('memo-cancel').addEventListener('click', () => {
-      if (memoDirty() && !confirm('작성 중인 내용을 버릴까요?')) return;
-      closeMemoForm();
-    });
+    $('memo-cancel').addEventListener('click', askToCloseMemoForm);
 
     // ---------- content form ----------
     // Each input carries data-path (e.g. "members.0.name"); edits write straight into `content`.
