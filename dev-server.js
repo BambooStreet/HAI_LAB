@@ -46,6 +46,7 @@ http.createServer(async (req, res) => {
     try {
       const body = await readFile(path);
       res.setHeader('Content-Type', types[extname(path)] || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'no-store'); // always serve the file as it is on disk right now
       return res.end(body);
     } catch {}
   }

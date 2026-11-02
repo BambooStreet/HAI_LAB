@@ -1413,6 +1413,8 @@
     function renderMemoMedia() {
       memoAt = Math.max(0, Math.min(memoAt, memoMedia.length - 1));
       const item = memoMedia[memoAt];
+      // An upload finishing redraws this block; don't throw away a caption being typed.
+      const typing = document.activeElement?.id === 'memo-slide-caption' ? document.activeElement.selectionStart : null;
       $('memo-media-hint').hidden = !memoMedia.length;
       $('memo-media').innerHTML = !item
         ? `<button class="dropzone" type="button" data-add-media>
@@ -1445,6 +1447,12 @@
               <input id="memo-slide-caption" maxlength="200" value="${esc(item.caption ?? '')}"
                      placeholder="이 사진만의 한 줄 설명 — 넘길 때 같이 바뀝니다" /></label>
           </div>`;
+
+      if (typing != null) {
+        const box = $('memo-slide-caption');
+        box?.focus();
+        box?.setSelectionRange(typing, typing);
+      }
     }
 
     // Uploaded one at a time so a big video's progress is easy to follow.
@@ -1452,13 +1460,21 @@
       const picked = mediaFiles(list);
       if (!picked.length) return;
       const files = await Promise.all(picked.map(heldInMemory));
-      for (const file of files) {
-        const item = { video: isVideo(file), uploading: true, progress: 0, preview: URL.createObjectURL(file) };
-        memoMedia.push(item);
-        memoAt = memoMedia.length - 1; // show what is being added
-        memoUploads += 1;
-        setMemoBusy();
-        renderMemoMedia();
+
+      // Every pick is added at once, then uploaded one by one in the background. Adding them as
+      // each upload finished kept dragging the view to the newest photo, so flipping back to an
+      // earlier one looked like that photo had turned into the last one picked.
+      const items = files.map((file) => ({
+        video: isVideo(file), uploading: true, progress: 0, preview: URL.createObjectURL(file),
+      }));
+      memoMedia.push(...items);
+      memoAt = memoMedia.length - items.length; // land on the first of what was just added
+      memoUploads += items.length;
+      setMemoBusy();
+      renderMemoMedia();
+
+      for (const [i, file] of files.entries()) {
+        const item = items[i];
         try {
           item.url = item.video
             ? await uploadVideo(file, (done) => { item.progress = done; renderMemoMedia(); })
@@ -1469,9 +1485,8 @@
           memoMedia = memoMedia.filter((x) => x !== item);
           toast(err.message, true);
         } finally {
-          // The preview URL is released when the composer closes, not here: a phone browser can
-          // hand the same blob: address to the next photo once this one is revoked, which made
-          // every photo still waiting to upload show the last one picked.
+          // The preview URL is released when the composer closes, not here: a browser can hand
+          // the same blob: address to a photo that is still waiting its turn.
           memoUploads -= 1;
           setMemoBusy();
           renderMemoMedia();
