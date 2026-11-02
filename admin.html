@@ -458,7 +458,7 @@
           <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
           <div class="media-field">
             <span class="field-label">사진 · 동영상</span>
-            <p class="hint" id="memo-media-hint">사진 위의 <b>‹ ›</b> 또는 아래 점으로 넘기면서, 사진마다 설명을 답니다. <b>앞으로·뒤로</b>는 순서 바꾸기이고, 맨 앞 사진이 피드에 먼저 보여요. 끌어다 놓기나 붙여넣기(Ctrl+V)로도 올릴 수 있습니다.</p>
+            <p class="hint" id="memo-media-hint">사진 위의 <b>‹ ›</b>, 아래 점, 또는 밀어서 넘기면서 사진마다 설명을 답니다. 맨 앞 사진이 피드에 먼저 보여요. 끌어다 놓기나 붙여넣기(Ctrl+V)로도 올릴 수 있습니다.</p>
             <div id="memo-media"></div>
           </div>
           <label class="caption-field"><span>설명</span><textarea id="memo-caption" rows="4" maxlength="50000"
@@ -1440,9 +1440,6 @@
               : ''}
             <div class="cm-bar">
               <button class="btn" type="button" data-add-media>＋ 사진 추가</button>
-              ${memoMedia.length > 1 ? `
-                <button class="btn" type="button" data-move="-1" title="이 사진을 앞 순서로"${memoAt ? '' : ' disabled'}>⇞ 앞으로</button>
-                <button class="btn" type="button" data-move="1" title="이 사진을 뒤 순서로"${memoAt < memoMedia.length - 1 ? '' : ' disabled'}>뒤로 ⇟</button>` : ''}
               <button class="btn danger" type="button" data-drop-media="${memoAt}">✕ 이 사진 빼기</button>
             </div>
             <label class="slide-caption"><span>이 사진 설명 (선택)</span>
@@ -1521,13 +1518,6 @@
       const go = e.target.closest('[data-go]');
       if (go) {
         memoAt = Number(go.dataset.go);
-        return renderMemoMedia();
-      }
-      const move = e.target.closest('[data-move]');
-      if (move) { // the photo travels with you, so you keep looking at the same one
-        const to = memoAt + Number(move.dataset.move);
-        memoMedia.splice(to, 0, ...memoMedia.splice(memoAt, 1));
-        memoAt = to;
         renderMemoMedia();
       }
     });
