@@ -291,7 +291,9 @@
     .feed-dots { display: flex; justify-content: center; gap: 5px; padding: 8px; background: var(--surface); }
     .feed-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
     .feed-dot.on { background: var(--accent); }
-    @media (hover: none) { .feed-nav { display: none; } } /* phones swipe instead */
+    /* A card's photos are swiped on a phone, so its arrows step aside. The composer's frame
+       doesn't scroll, so its arrows have to stay. */
+    @media (hover: none) { .feed .feed-nav { display: none; } }
 
     .memo-body { margin-top: 12px; white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 0.95rem; }
     .memo-body img, .memo-body video { display: block; max-width: 100%; max-height: 420px; margin: 6px auto; border-radius: 10px; border: 1px solid var(--line); }
@@ -334,7 +336,7 @@
     }
     .cm-frame img, .cm-frame video { width: 100%; height: 100%; object-fit: contain; display: block; }
     .cm-frame.busy img, .cm-frame.busy video { opacity: .4; }
-    .cm-frame .feed-nav { opacity: 1; }
+    .cm-frame .feed-nav { opacity: 1; width: 34px; height: 34px; font-size: 1.3rem; }
     .cm-frame .pct {
       position: absolute; inset: 0; display: grid; place-items: center;
       color: #fff; font-size: 1rem; text-shadow: 0 1px 3px rgba(0, 0, 0, .8); pointer-events: none;
@@ -456,7 +458,7 @@
           <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
           <div class="media-field">
             <span class="field-label">사진 · 동영상</span>
-            <p class="hint" id="memo-media-hint">‹ › 로 넘기면서 사진마다 설명을 답니다. ◀ ▶ 는 순서 바꾸기이고, 맨 앞 사진이 피드에 먼저 보여요. 끌어다 놓기나 붙여넣기(Ctrl+V)로도 올릴 수 있습니다.</p>
+            <p class="hint" id="memo-media-hint">사진 위의 <b>‹ ›</b> 또는 아래 점으로 넘기면서, 사진마다 설명을 답니다. <b>앞으로·뒤로</b>는 순서 바꾸기이고, 맨 앞 사진이 피드에 먼저 보여요. 끌어다 놓기나 붙여넣기(Ctrl+V)로도 올릴 수 있습니다.</p>
             <div id="memo-media"></div>
           </div>
           <label class="caption-field"><span>설명</span><textarea id="memo-caption" rows="4" maxlength="50000"
@@ -1439,8 +1441,8 @@
             <div class="cm-bar">
               <button class="btn" type="button" data-add-media>＋ 사진 추가</button>
               ${memoMedia.length > 1 ? `
-                <button class="btn" type="button" data-move="-1" title="앞으로 옮기기"${memoAt ? '' : ' disabled'}>◀</button>
-                <button class="btn" type="button" data-move="1" title="뒤로 옮기기"${memoAt < memoMedia.length - 1 ? '' : ' disabled'}>▶</button>` : ''}
+                <button class="btn" type="button" data-move="-1" title="이 사진을 앞 순서로"${memoAt ? '' : ' disabled'}>⇞ 앞으로</button>
+                <button class="btn" type="button" data-move="1" title="이 사진을 뒤 순서로"${memoAt < memoMedia.length - 1 ? '' : ' disabled'}>뒤로 ⇟</button>` : ''}
               <button class="btn danger" type="button" data-drop-media="${memoAt}">✕ 이 사진 빼기</button>
             </div>
             <label class="slide-caption"><span>이 사진 설명 (선택)</span>
@@ -1529,6 +1531,20 @@
         renderMemoMedia();
       }
     });
+
+    // Swipe across the preview on a phone, the same gesture the finished card answers to.
+    let swipeFrom = null;
+    $('memo-media').addEventListener('touchstart', (e) => {
+      swipeFrom = e.target.closest('.cm-frame') ? e.changedTouches[0].clientX : null;
+    }, { passive: true });
+    $('memo-media').addEventListener('touchend', (e) => {
+      if (swipeFrom == null) return;
+      const moved = e.changedTouches[0].clientX - swipeFrom;
+      swipeFrom = null;
+      if (Math.abs(moved) < 40) return;
+      memoAt += moved < 0 ? 1 : -1;
+      renderMemoMedia();
+    }, { passive: true });
 
     // Typed straight into the item, so it survives a re-render and is saved with the post.
     $('memo-media').addEventListener('input', (e) => {
