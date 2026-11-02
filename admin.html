@@ -713,6 +713,20 @@
 
     const mediaFiles = (list) => [...(list || [])].filter((f) => f.type.startsWith('image/') || isVideo(f));
 
+    // A file from a phone's album is a reference to a photo, not the photo itself, and that
+    // reference can go stale while an earlier upload is still running — the later reads then come
+    // back as the most recent picture, so every photo ends up the same one. Copying the bytes
+    // straight away, before any upload waits, pins each pick to what the person actually chose.
+    // Videos are left alone: they are picked one at a time and far too big to hold in memory.
+    async function heldInMemory(file) {
+      if (isVideo(file)) return file;
+      try {
+        return new File([await file.arrayBuffer()], file.name, { type: file.type });
+      } catch {
+        return file;
+      }
+    }
+
     async function request(url, method, body) {
       const res = await fetch(url, {
         method,
@@ -1171,7 +1185,7 @@
         el.focus();
         const videos = files.filter(isVideo).length;
         toast(videos ? `동영상 ${videos}개 올리는 중…` : `사진 ${files.length}장 올리는 중…`);
-        await Promise.all(files.map(async (file) => {
+        await Promise.all((await Promise.all(files.map(heldInMemory))).map(async (file) => {
           const video = isVideo(file);
           const node = document.createElement(video ? 'video' : 'img');
           const local = URL.createObjectURL(file);
@@ -1194,11 +1208,13 @@
               node.load();
             }
           } catch (err) {
+            URL.revokeObjectURL(local);
             node.remove();
             toast(err.message, true);
             throw err;
           } finally {
-            URL.revokeObjectURL(local);
+            // Not revoked on success: these uploads run side by side, and a phone browser can
+            // reuse a just-revoked blob: address for another one still being uploaded.
             setUploading(-1);
           }
         })).then(() => toast(videos ? '동영상을 넣었어요.' : '사진을 넣었어요.'), () => {});
@@ -1433,8 +1449,9 @@
 
     // Uploaded one at a time so a big video's progress is easy to follow.
     async function addMemoFiles(list) {
-      const files = mediaFiles(list);
-      if (!files.length) return;
+      const picked = mediaFiles(list);
+      if (!picked.length) return;
+      const files = await Promise.all(picked.map(heldInMemory));
       for (const file of files) {
         const item = { video: isVideo(file), uploading: true, progress: 0, preview: URL.createObjectURL(file) };
         memoMedia.push(item);
@@ -1448,10 +1465,13 @@
             : await uploadImage(file);
           item.uploading = false;
         } catch (err) {
+          dropPreview(item);
           memoMedia = memoMedia.filter((x) => x !== item);
           toast(err.message, true);
         } finally {
-          URL.revokeObjectURL(item.preview);
+          // The preview URL is released when the composer closes, not here: a phone browser can
+          // hand the same blob: address to the next photo once this one is revoked, which made
+          // every photo still waiting to upload show the last one picked.
           memoUploads -= 1;
           setMemoBusy();
           renderMemoMedia();
@@ -1461,11 +1481,18 @@
 
     const pickMemoFiles = async () => addMemoFiles(await pickFiles('image/*,video/mp4,video/webm,video/quicktime', true));
 
+    function dropPreview(item) {
+      if (!item?.preview) return;
+      URL.revokeObjectURL(item.preview);
+      item.preview = '';
+    }
+
     $('memo-media').addEventListener('click', (e) => {
       if (e.target.closest('[data-add-media]')) return pickMemoFiles();
 
       const drop = e.target.closest('[data-drop-media]');
       if (drop) {
+        dropPreview(memoMedia[Number(drop.dataset.dropMedia)]);
         memoMedia.splice(Number(drop.dataset.dropMedia), 1);
         return renderMemoMedia();
       }
@@ -1566,7 +1593,7 @@
       commentMedia.set(key, items);
       const room = COMMENT_MAX - items.length;
       if (files.length > room) toast(`댓글 사진은 ${COMMENT_MAX}장까지예요.`, true);
-      for (const file of files.slice(0, room)) {
+      for (const file of await Promise.all(files.slice(0, room).map(heldInMemory))) {
         const item = { uploading: true, preview: URL.createObjectURL(file) };
         items.push(item);
         renderCommentMedia(key);
@@ -1574,11 +1601,11 @@
           item.url = await uploadImage(file);
           item.uploading = false;
         } catch (err) {
+          dropPreview(item);
           items.splice(items.indexOf(item), 1);
           toast(err.message, true);
         } finally {
-          URL.revokeObjectURL(item.preview);
-          renderCommentMedia(key);
+          renderCommentMedia(key); // the preview is released once the comment is posted or cleared
         }
       }
     }
@@ -1842,6 +1869,7 @@
       input.disabled = false;
       const m = memos.find((x) => x.id === id);
       if (!r || !m) return input.focus();
+      for (const item of commentItems(key)) dropPreview(item);
       commentMedia.delete(key);
       m.comments.push(r.comment);
       openComments.add(id);
@@ -1888,6 +1916,7 @@
     }
 
     function closeMemoForm() {
+      for (const item of memoMedia) dropPreview(item);
       memoEditing = null;
       if (memoDialog.open) memoDialog.close();
     }
