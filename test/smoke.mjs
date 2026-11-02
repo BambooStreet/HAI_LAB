@@ -64,6 +64,13 @@ try {
   check('새 글이 저장됨', created?.body === body);
   check('새 글이 맨 위로', (await api('/api/memo')).body.memos[0].id === created.id);
 
+  const withCaptions = `![첫 사진 설명](${photo})\n![](${clip})\n글 전체 설명`;
+  const captioned = (await api('/api/memo', { method: 'POST', body: { title: '사진별 설명', body: withCaptions } })).body.memo;
+  check('사진별 설명이 그대로 저장됨', captioned?.body === withCaptions);
+  const reread = (await api('/api/memo')).body.memos.find((m) => m.id === captioned.id);
+  check('다시 읽어도 설명이 붙어 있음', reread.body.includes('![첫 사진 설명]('), reread.body.slice(0, 60));
+  await api(`/api/memo?id=${captioned.id}`, { method: 'DELETE' });
+
   const edited = await api('/api/memo', { method: 'PUT', body: { id: created.id, version: created.version, title: '테스트2', body } });
   check('수정되면 version이 올라감', edited.body.memo?.version === created.version + 1);
   const stale = await api('/api/memo', { method: 'PUT', body: { id: created.id, version: created.version, body } });
