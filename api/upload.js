@@ -135,6 +135,40 @@ async function findOrphans() {
 export default async function handler(req, res) {
   const params = new URL(req.url, 'http://x').searchParams;
 
+  // Can the server still read a file's bytes when the public URL is blocked? Tries the plain URL
+  // and a signed one, and reports what each answered.
+  if (params.has('reachtest') && req.method === 'GET') {
+    if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
+    try {
+      const [first] = (await list({ prefix: 'hai/', limit: 1, ...(blobToken && { token: blobToken }) })).blobs;
+      if (!first) return send(res, 200, { error: '파일이 없습니다.' });
+
+      const probe = async (label, url) => {
+        try {
+          const r = await fetch(url);
+          return { [label]: r.status, [`${label}Bytes`]: r.ok ? (await r.arrayBuffer()).byteLength : 0 };
+        } catch (err) {
+          return { [label]: `오류: ${err.message}` };
+        }
+      };
+
+      const token = await issueSignedToken({
+        pathname: first.pathname, operations: ['get'],
+        validUntil: Date.now() + 10 * 60 * 1000, ...(blobToken && { token: blobToken }),
+      });
+      const { presignedUrl } = await presignUrl(token, { operation: 'get', pathname: first.pathname, access: 'public' });
+
+      return send(res, 200, {
+        pathname: first.pathname,
+        size: first.size,
+        ...(await probe('plain', first.url)),
+        ...(await probe('signed', presignedUrl)),
+      });
+    } catch (err) {
+      return send(res, 200, { error: err.message });
+    }
+  }
+
   // Storage housekeeping, both admin-only.
   if (params.has('orphans') && (req.method === 'GET' || req.method === 'DELETE')) {
     if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
