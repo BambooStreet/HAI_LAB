@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { send, isAdmin, readBody } from './_lib/http.js';
-import { blobToken, hasBlob, getJSON } from './_lib/store.js';
+import { blobToken, hasBlob, getJSON, setJSON } from './_lib/store.js';
 import { listMemos } from './_lib/memos.js';
 
 // Images arrive already resized by the admin page, as a raw application/octet-stream body.
@@ -79,6 +79,16 @@ async function readBuffer(req) {
 // Files no post shows any more. Anything uploaded in the last hour is kept, so a photo that is
 // still sitting in an unsaved post is never swept away.
 const KEEP_RECENT_MS = 60 * 60 * 1000;
+const USAGE_KEY = 'hai:blob-usage'; // last reading, so a blocked store can still show something
+
+// What the posts point at, worked out without touching the store.
+async function referencedFiles() {
+  const [memos, papers, content] = await Promise.all([listMemos(), getJSON('hai:papers'), getJSON('hai:content')]);
+  const shown = JSON.stringify([memos, papers, content]);
+  const files = [...new Set([...shown.matchAll(/hai\/[\w.-]+/g)].map((m) => m[0]))];
+  const videos = files.filter((p) => /\.(mp4|webm|mov)$/i.test(p));
+  return { referenced: files.length, videos: videos.length, lastSeen: await getJSON(USAGE_KEY) };
+}
 
 async function findOrphans() {
   const [{ blobs }, memos, papers, content] = await Promise.all([
@@ -131,10 +141,17 @@ export default async function handler(req, res) {
     if (!hasBlob) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
     try {
       const { orphans, summary } = await findOrphans();
+      // Kept so the page can still say how full the store was the last time it could look.
+      await setJSON(USAGE_KEY, { at: Date.now(), total: summary.total, totalBytes: summary.totalBytes });
       if (req.method === 'GET') return send(res, 200, summary);
       if (orphans.length) await del(orphans.map((b) => b.url), { ...(blobToken && { token: blobToken }) });
       return send(res, 200, { ...summary, deleted: orphans.length });
     } catch (err) {
+      // Over the plan's limits the whole store answers 403, reads included. Say so plainly and
+      // show what can still be worked out from the posts themselves.
+      if (/blocked|403|forbidden|limit/i.test(err.message)) {
+        return send(res, 200, { blocked: true, reason: err.message, ...(await referencedFiles()) });
+      }
       console.error(err);
       return send(res, 500, { error: `저장소를 정리하지 못했습니다: ${err.message}` });
     }

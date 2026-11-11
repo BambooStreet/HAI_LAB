@@ -882,6 +882,21 @@
           <td>${f.size == null ? '' : mb(f.size)}</td></tr>`).join('')}</tbody></table>`;
 
     function renderStorage(s, cleaned = false) {
+      // Over the plan's limits the store answers 403 to everything, reads included.
+      if (s.blocked) {
+        const seen = s.lastSeen;
+        $('storage-clean').hidden = true;
+        $('storage-usage').innerHTML = `
+          <p class="memo-status err">🔒 저장소가 잠겨 있어 용량을 읽을 수 없습니다.</p>
+          <p class="memo-status">사진·동영상이 보이지 않을 뿐, 파일은 지워지지 않았습니다. 요금제 한도가 초기화되면 그대로 다시 보입니다.</p>
+          ${seen ? `<p class="memo-status">마지막으로 확인한 용량: ${mb(seen.totalBytes)} · 파일 ${seen.total}개 (${timeOf(seen.at)})</p>` : ''}`;
+        $('storage-result').innerHTML = `
+          <p class="memo-status">지금 글들이 쓰고 있는 파일: <b>${s.referenced}개</b>${s.videos ? ` (그중 동영상 ${s.videos}개)` : ''}</p>
+          <p class="memo-status">${s.videos ? '동영상이 용량을 가장 많이 차지합니다. 유튜브에 올리고 주소만 붙이는 방식을 권해요.' : ''}</p>
+          <p class="memo-status">서버가 알려준 이유: ${esc(s.reason || '')}</p>`;
+        return;
+      }
+
       const used = Math.min(100, Math.round((s.totalBytes / FREE_LIMIT) * 100));
       const level = used >= 90 ? 'full' : used >= 70 ? 'warn' : '';
       $('storage-usage').innerHTML = `
