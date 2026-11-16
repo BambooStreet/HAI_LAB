@@ -10,10 +10,20 @@
 // included here.
 import { list } from '@vercel/blob';
 import { send, isAdmin } from './_lib/http.js';
-import { blobToken, hasBlob, getJSON, setJSON, sql, hasDb } from './_lib/store.js';
+import { getJSON, setJSON, sql, hasDb } from './_lib/store.js';
 import { hasMedia, putMedia, publicUrl, PREFIX } from './_lib/media.js';
 
 export const config = { maxDuration: 60 };
+
+// Reading the old store is this file's job alone, so its credentials live here rather than in
+// store.js — this file goes away once nothing is left on Blob.
+// The token's default name is BLOB_READ_WRITE_TOKEN; a store connected with a custom prefix uses
+// <PREFIX>_READ_WRITE_TOKEN. Newer connections authenticate via OIDC with BLOB_STORE_ID instead.
+const blobToken =
+  process.env.BLOB_READ_WRITE_TOKEN ||
+  Object.entries(process.env).find(([k, v]) => /BLOB|READ_WRITE/i.test(k) && k.endsWith('TOKEN') && v?.startsWith('vercel_blob_'))?.[1] ||
+  '';
+const hasBlob = Boolean(blobToken || process.env.BLOB_STORE_ID);
 
 const BUDGET_MS = 45_000; // leave room to answer before the function is cut off
 const BLOB_URL_RE = /https:\/\/[\w.-]*\.blob\.vercel-storage\.com\/(hai\/[\w.-]+)/g;

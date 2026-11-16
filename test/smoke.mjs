@@ -1,7 +1,9 @@
 // Smoke test: starts the dev server on its own port with in-memory data (never touches the real
 // database) and walks the API the admin page uses. Run with: npm test
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { readdir } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 
 const PORT = 3457;
 const PASSWORD = 'smoke-test';
@@ -47,6 +49,21 @@ async function waitForServer() {
 
 try {
   await waitForServer();
+
+  // A route that imports something no longer exported dies before it can answer, and the page
+  // only ever sees a bare 500. Loading every route here names the file and the missing piece.
+  console.log('\n모듈');
+  const apiDir = fileURLToPath(new URL('../api/', import.meta.url));
+  const routes = (await readdir(apiDir, { recursive: true })).filter((f) => f.endsWith('.js')).sort();
+  for (const name of routes) {
+    const shown = name.replaceAll('\\', '/');
+    try {
+      await import(pathToFileURL(join(apiDir, name)).href);
+      check(`${shown} 가 불러와짐`, true);
+    } catch (err) {
+      check(`${shown} 가 불러와짐`, false, err.message);
+    }
+  }
 
   console.log('\n로그인');
   check('비밀번호가 틀리면 거절', (await api('/api/memo', { headers: { 'x-admin-password': 'nope' } })).status === 401);
