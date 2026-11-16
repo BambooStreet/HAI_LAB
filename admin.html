@@ -509,15 +509,6 @@
         </div>
 
         <div class="card">
-          <h3>📦 남은 파일 옮기기</h3>
-          <p class="hint">예전 Vercel 저장소에 남아 있는 사진·동영상을 오라클로 복사하고, 글과 댓글의 주소를 새 주소로 바꿉니다. 원본은 지우지 않으니 여러 번 눌러도 안전합니다.</p>
-          <div class="form-actions" style="justify-content: flex-start">
-            <button class="btn primary" type="button" id="migrate-run">옮기기 실행</button>
-          </div>
-          <div id="migrate-result"></div>
-        </div>
-
-        <div class="card">
           <h3>🧹 데이터 점검</h3>
           <p class="hint">삭제된 글에 남은 댓글·좋아요처럼 확실히 필요 없는 것만 지웁니다. 글과 사진은 건드리지 않고, 확인이 필요한 것은 목록으로만 알려드려요.</p>
           <div class="form-actions" style="justify-content: flex-start">
@@ -1013,37 +1004,6 @@
       $('since').innerHTML = `💛 ${y}년 ${m}월 ${d}일부터 · <b>${count.toLocaleString()}일째</b>`
         + (next ? `<span> · ${next}일까지 ${(next - count).toLocaleString()}일</span>` : '');
     }
-
-    $('migrate-run').addEventListener('click', async () => {
-      if (!confirm('예전 저장소에 남은 사진·동영상을 오라클로 복사하고 주소를 바꿉니다. 계속할까요?')) return;
-      const btn = $('migrate-run');
-      btn.disabled = true;
-      // A function only gets a minute, so the server moves what it can and says what is left.
-      let moved = 0;
-      let movedBytes = 0;
-      const missing = new Set();
-      try {
-        for (let round = 1; ; round += 1) {
-          $('migrate-result').innerHTML = `<p class="memo-status">옮기는 중… ${moved}개 완료${moved ? ` (${mb(movedBytes)})` : ''}</p>`;
-          const r = await request('/api/migrate', 'POST');
-          moved += r.copied;
-          movedBytes += r.bytes ?? 0;
-          for (const f of r.missing ?? []) missing.add(f);
-          if (r.done || (!r.copied && !r.remaining)) {
-            $('migrate-result').innerHTML = `
-              <p class="memo-status">끝났습니다 — ${moved}개 (${mb(movedBytes)}) 를 오라클로 옮겼어요.</p>
-              ${missing.size ? `<p class="memo-status err">원본을 찾지 못한 파일 ${missing.size}개 — 주소는 그대로 두었습니다.</p>${fileRows([...missing])}` : ''}`;
-            break;
-          }
-          if (!r.copied) throw new Error('진행이 멈췄습니다. 잠시 후 다시 시도해 주세요.');
-        }
-      } catch (err) {
-        $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>
-          <p class="memo-status">${moved}개까지는 옮겼습니다. 다시 누르면 이어서 진행합니다.</p>`;
-      } finally {
-        btn.disabled = false;
-      }
-    });
 
     $('tidy-scan').addEventListener('click', () => tidyAction('GET'));
     $('tidy-clean').addEventListener('click', () => {
