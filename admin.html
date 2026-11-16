@@ -513,6 +513,7 @@
           <p class="hint">예전에 Vercel에 올린 사진·동영상을 오라클 저장소로 복사하고, 글의 주소를 새 주소로 바꿉니다. 원본은 지우지 않으니 여러 번 눌러도 안전합니다.</p>
           <div class="form-actions" style="justify-content: flex-start">
             <button class="btn primary" type="button" id="migrate-run">옮기기 실행</button>
+            <button class="btn" type="button" id="allow-origin">동영상 업로드 허용</button>
           </div>
           <div id="migrate-result"></div>
         </div>
@@ -998,6 +999,25 @@
       } catch (err) {
         $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>
           <p class="memo-status">${moved}개까지는 옮겼습니다. 다시 누르면 이어서 진행합니다.</p>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Videos are sent from the browser straight to the store, which only accepts them once the
+    // store has been told this site is allowed to.
+    $('allow-origin').addEventListener('click', async () => {
+      const btn = $('allow-origin');
+      btn.disabled = true;
+      $('migrate-result').innerHTML = '<p class="memo-status">저장소에 설정하는 중…</p>';
+      try {
+        const r = await request('/api/upload?allow-origin=1', 'POST');
+        $('migrate-result').innerHTML = r.ok
+          ? `<p class="memo-status">됐습니다. 이제 ${esc(r.origin)} 에서 동영상을 바로 올릴 수 있어요.</p>`
+          : `<p class="memo-status err">저장소가 거절했습니다: ${esc(r.error)}</p>
+             <p class="memo-status">동영상은 유튜브에 올리고 주소를 붙여넣는 방식으로 쓰셔야 합니다.</p>`;
+      } catch (err) {
+        $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>`;
       } finally {
         btn.disabled = false;
       }
