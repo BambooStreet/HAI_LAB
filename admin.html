@@ -691,27 +691,70 @@
       return data.url;
     }
 
-    // Videos skip the server: it hands out a one-off upload URL and the file goes straight to
-    // storage, so the 4.5MB function body limit doesn't apply. onProgress gets 0..1.
+    // A video is far bigger than a function body (4.5MB), and the store won't let a browser post
+    // to it directly, so the file is cut into pieces that go through our own server one at a
+    // time and the store joins them back up. onProgress gets 0..1.
+    const PART_TRIES = 3; // a dropped piece is retried rather than losing the whole upload
+    const PARALLEL_PARTS = 3;
+
+    async function sendPart(key, uploadId, n, piece) {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          const res = await fetch(`/api/upload?video=part&key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&part=${n}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream', 'x-admin-password': encodeURIComponent(password) },
+            body: piece,
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `조각 ${n}을 올리지 못했습니다 (${res.status})`);
+          return { n, etag: data.etag };
+        } catch (err) {
+          if (attempt >= PART_TRIES) throw err;
+          await new Promise((r) => setTimeout(r, 500 * attempt));
+        }
+      }
+    }
+
     async function uploadVideo(file, onProgress) {
-      const { uploadUrl, url } = await request('/api/upload?video=1', 'POST', { type: file.type, size: file.size });
-      const body = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', uploadUrl);
-        xhr.setRequestHeader('Content-Type', file.type);
-        // Only our own server gets the password; a storage URL must never see it.
-        if (uploadUrl.startsWith('/')) xhr.setRequestHeader('x-admin-password', encodeURIComponent(password));
-        xhr.upload.addEventListener('progress', (e) => e.lengthComputable && onProgress?.(e.loaded / e.total));
-        xhr.addEventListener('load', () => (xhr.status < 300
-          ? resolve(xhr.responseText)
-          : reject(new Error(`동영상을 올리지 못했습니다 (${xhr.status})`))));
-        xhr.addEventListener('error', () => reject(new Error('동영상을 올리는 중 연결이 끊겼어요.')));
-        xhr.send(file);
-      });
-      // Blob answers with the stored blob's real URL; only fall back to the guessed one.
-      let stored = '';
-      try { stored = JSON.parse(body)?.url || ''; } catch {}
-      return stored || url;
+      const started = await request('/api/upload?video=start', 'POST', { type: file.type, size: file.size });
+
+      // Local dev has no store credentials, so the file goes to a temp folder in one go.
+      if (started.uploadUrl) {
+        const res = await fetch(started.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type, 'x-admin-password': encodeURIComponent(password) },
+          body: file,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `동영상을 올리지 못했습니다 (${res.status})`);
+        onProgress?.(1);
+        return data.url;
+      }
+
+      const { key, uploadId, partSize } = started;
+      const total = Math.ceil(file.size / partSize);
+      const parts = [];
+      let done = 0;
+      onProgress?.(0);
+
+      try {
+        // A few pieces at a time: one by one is slow over a phone connection, and all at once
+        // would swamp it.
+        for (let from = 1; from <= total; from += PARALLEL_PARTS) {
+          const batch = [];
+          for (let n = from; n < from + PARALLEL_PARTS && n <= total; n += 1) {
+            batch.push(sendPart(key, uploadId, n, file.slice((n - 1) * partSize, n * partSize))
+              .then((part) => { done += 1; onProgress?.(done / total); return part; }));
+          }
+          parts.push(...await Promise.all(batch));
+        }
+        const { url } = await request('/api/upload?video=finish', 'POST', { key, uploadId, parts });
+        return url;
+      } catch (err) {
+        // Leave nothing half-uploaded behind, then report the original problem.
+        request('/api/upload?video=abort', 'POST', { key, uploadId }).catch(() => {});
+        throw err;
+      }
     }
 
     const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];

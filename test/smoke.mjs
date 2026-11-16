@@ -91,6 +91,27 @@ try {
   check('다른 브라우저에는 눌린 표시가 없음', seen.likes === 1 && seen.liked === false);
   check('댓글 3개가 글에 붙어 있음', seen.comments.length === 3);
 
+  console.log('\n사진·동영상 올리기');
+  // Locally there is no cloud storage, so files land in a temp folder and are served back from it.
+  const raw = (extra) => ({ 'Content-Type': 'application/octet-stream', 'x-admin-password': PASSWORD, ...extra });
+  const bytes = Buffer.from('smoke-test-bytes');
+  const shot = await fetch(`${base}/api/upload`, { method: 'POST', headers: raw({ 'x-image-type': 'image/png' }), body: bytes });
+  const shotUrl = (await shot.json()).url || '';
+  check('사진이 올라감', shot.status === 200 && shotUrl.includes('/api/upload?file='));
+  check('올린 사진을 다시 받을 수 있음', Buffer.from(await (await fetch(shotUrl)).arrayBuffer()).equals(bytes));
+
+  const badType = await api('/api/upload?video=start', { method: 'POST', body: { type: 'video/avi', size: 10 } });
+  check('지원하지 않는 동영상 형식은 거절', badType.status === 400);
+  const tooBig = await api('/api/upload?video=start', { method: 'POST', body: { type: 'video/mp4', size: 999 * 1024 * 1024 } });
+  check('너무 큰 동영상은 거절', tooBig.status === 413);
+
+  const start = await api('/api/upload?video=start', { method: 'POST', body: { type: 'video/mp4', size: bytes.length } });
+  check('동영상 올릴 곳을 받음', start.status === 200 && typeof start.body.uploadUrl === 'string');
+  const put = await fetch(base + start.body.uploadUrl, { method: 'PUT', headers: raw(), body: bytes });
+  const clipUrl = (await put.json()).url || '';
+  check('동영상이 올라감', put.status === 200 && clipUrl.includes('/api/upload?file='));
+  check('올린 동영상을 다시 받을 수 있음', Buffer.from(await (await fetch(clipUrl)).arrayBuffer()).equals(bytes));
+
   console.log('\n정리');
   const tidyBefore = (await api('/api/memo?action=tidy')).body;
   check('남은 기록 점검이 동작', typeof tidyBefore.stray?.comments === 'number');

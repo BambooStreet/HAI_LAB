@@ -2,9 +2,9 @@
 // Vercel Blob was outgrown: its free tier allows 1GB and 10GB of traffic a month, and a few
 // phone videos being watched was enough to have the whole store cut off for 30 days.
 import {
-  S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, PutBucketCorsCommand,
+  S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command,
+  CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand,
 } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const { OCI_REGION, OCI_NAMESPACE, OCI_BUCKET, OCI_ACCESS_KEY_ID, OCI_SECRET_ACCESS_KEY } = process.env;
 
@@ -44,32 +44,36 @@ export async function putMedia(key, body, contentType) {
   return publicUrl(key);
 }
 
-// A video is far too big for a function body, so the browser sends it to the store itself with
-// a URL that is signed for this one upload and expires shortly.
-export async function signUpload(key, contentType, seconds = 3600) {
-  return getSignedUrl(s3(), new PutObjectCommand({ Bucket: OCI_BUCKET, Key: key, ContentType: contentType }), { expiresIn: seconds });
+// A video is far too big for a function body (4.5MB) and Oracle's S3 endpoint won't accept the
+// CORS settings that would let a browser send it to the store directly. So the browser cuts the
+// file into pieces, posts each to this site, and the store puts them back together.
+export const PART_SIZE = 4 * 1024 * 1024;
+
+export async function startUpload(key, contentType) {
+  const r = await s3().send(new CreateMultipartUploadCommand({
+    Bucket: OCI_BUCKET, Key: key, ContentType: contentType,
+    CacheControl: 'public, max-age=31536000, immutable',
+  }));
+  return r.UploadId;
 }
 
-// The browser can only send that upload if the store says its origin is welcome. Oracle's
-// S3 endpoint is picky about this document, so a few shapes are tried from richest to plainest
-// and the first one it accepts wins.
-export async function allowOrigin(origin) {
-  const shapes = [
-    { AllowedOrigins: [origin], AllowedMethods: ['PUT', 'GET', 'HEAD'], AllowedHeaders: ['*'], ExposeHeaders: ['ETag'], MaxAgeSeconds: 3600 },
-    { AllowedOrigins: [origin], AllowedMethods: ['PUT', 'GET', 'HEAD'], AllowedHeaders: ['*'] },
-    { AllowedOrigins: [origin], AllowedMethods: ['PUT', 'GET'] },
-    { AllowedOrigins: ['*'], AllowedMethods: ['PUT', 'GET'] },
-  ];
-  const tried = [];
-  for (const rule of shapes) {
-    try {
-      await s3().send(new PutBucketCorsCommand({ Bucket: OCI_BUCKET, CORSConfiguration: { CORSRules: [rule] } }));
-      return { ok: true, rule, tried };
-    } catch (err) {
-      tried.push({ rule: Object.keys(rule).join('+'), error: err.message });
-    }
-  }
-  return { ok: false, tried };
+export async function uploadPart(key, uploadId, partNumber, body) {
+  const r = await s3().send(new UploadPartCommand({
+    Bucket: OCI_BUCKET, Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body,
+  }));
+  return r.ETag;
+}
+
+export async function finishUpload(key, uploadId, parts) {
+  await s3().send(new CompleteMultipartUploadCommand({
+    Bucket: OCI_BUCKET, Key: key, UploadId: uploadId,
+    MultipartUpload: { Parts: parts.map((p) => ({ PartNumber: p.n, ETag: p.etag })) },
+  }));
+  return publicUrl(key);
+}
+
+export async function abortUpload(key, uploadId) {
+  await s3().send(new AbortMultipartUploadCommand({ Bucket: OCI_BUCKET, Key: key, UploadId: uploadId }));
 }
 
 export async function deleteMedia(key) {

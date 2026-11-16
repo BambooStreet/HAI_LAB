@@ -7,13 +7,14 @@ import { send, isAdmin, readBody } from './_lib/http.js';
 import { blobToken, hasBlob, getJSON, setJSON } from './_lib/store.js';
 import { listMemos } from './_lib/memos.js';
 import {
-  hasMedia, putMedia, deleteMedia, listMedia, signUpload, allowOrigin, publicUrl, keyFromUrl, PREFIX,
+  hasMedia, putMedia, deleteMedia, listMedia, keyFromUrl, PREFIX, PART_SIZE,
+  startUpload, uploadPart, finishUpload, abortUpload,
 } from './_lib/media.js';
 
 // Images arrive already resized by the admin page, as a raw application/octet-stream body.
 const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
-// Videos are too big for a function body (4.5 MB), so the browser uploads them straight to Blob
-// with a presigned PUT URL this route hands out. The URL itself caps the type and the size.
+// Videos are too big for a function body (4.5 MB), so the browser cuts one into pieces and posts
+// them here one at a time; the store joins them back together (see _lib/media.js).
 const VIDEO_TYPES = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
 const VIDEO_MAX_BYTES = 300 * 1024 * 1024;
 const MAX_BYTES = 4 * 1024 * 1024; // Vercel functions reject bodies over 4.5 MB
@@ -29,11 +30,8 @@ async function saveLocally(req, name, buffer) {
   return `http://${req.headers.host}/api/upload?file=${name}`;
 }
 
-// A read-write token looks like vercel_blob_rw_<storeId>_<secret>; the public URL needs the store id
-// without the "store_" prefix that BLOB_STORE_ID carries (that prefix makes the host 400).
-const storeId = () => (process.env.BLOB_STORE_ID || blobToken.split('_')[3] || '').replace(/^store_/, '');
-
-async function presignVideo(req, res) {
+// Checks the file over and opens an upload the pieces can be added to.
+async function startVideo(req, res) {
   const body = readBody(req);
   const type = String(body.type || '');
   const size = Number(body.size) || 0;
@@ -49,10 +47,18 @@ async function presignVideo(req, res) {
   }
 
   const key = `${PREFIX}${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
-  return send(res, 200, {
-    uploadUrl: await signUpload(key, type, 3600), // an hour: big files upload slowly on lab wifi
-    url: publicUrl(key),
-  });
+  return send(res, 200, { key, uploadId: await startUpload(key, type), partSize: PART_SIZE });
+}
+
+// One piece of a video on its way through. The bytes arrive raw, as with photos.
+async function takePart(req, res, params) {
+  const key = params.get('key') || '';
+  const uploadId = params.get('uploadId') || '';
+  const part = Number(params.get('part'));
+  if (!key.startsWith(PREFIX) || !uploadId || !(part >= 1)) return send(res, 400, { error: '잘못된 요청입니다.' });
+  const body = await readBuffer(req);
+  if (!body.length) return send(res, 400, { error: '빈 조각입니다.' });
+  return send(res, 200, { etag: await uploadPart(key, uploadId, part, body) });
 }
 
 async function readBuffer(req) {
@@ -121,19 +127,6 @@ async function findOrphans() {
 export default async function handler(req, res) {
   const params = new URL(req.url, 'http://x').searchParams;
 
-  // Tells the store to accept uploads sent straight from this site, which is what a video needs.
-  if (params.has('allow-origin') && req.method === 'POST') {
-    if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
-    if (!hasMedia) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
-    const origin = `https://${req.headers.host}`;
-    try {
-      const result = await allowOrigin(origin);
-      return send(res, 200, { ...result, origin, error: result.ok ? '' : result.tried.at(-1)?.error });
-    } catch (err) {
-      return send(res, 200, { ok: false, origin, error: err.message });
-    }
-  }
-
   // Storage housekeeping, both admin-only.
   if (params.has('orphans') && (req.method === 'GET' || req.method === 'DELETE')) {
     if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
@@ -143,7 +136,7 @@ export default async function handler(req, res) {
       // Kept so the page can still say how full the store was the last time it could look.
       await setJSON(USAGE_KEY, { at: Date.now(), total: summary.total, totalBytes: summary.totalBytes });
       if (req.method === 'GET') return send(res, 200, summary);
-      if (orphans.length) await del(orphans.map((b) => b.url), { ...(blobToken && { token: blobToken }) });
+      for (const b of orphans) await deleteMedia(b.pathname);
       return send(res, 200, { ...summary, deleted: orphans.length });
     } catch (err) {
       // Over the plan's limits the whole store answers 403, reads included. Say so plainly and
@@ -206,12 +199,24 @@ export default async function handler(req, res) {
     }
   }
 
-  if (new URL(req.url, 'http://x').searchParams.has('video')) {
+  // A video arrives in pieces: one call to begin, one per piece, one to put them together.
+  if (params.has('video')) {
+    const step = params.get('video');
     try {
-      return await presignVideo(req, res);
+      if (step === 'part') return await takePart(req, res, params);
+      if (step === 'finish') {
+        const { key, uploadId, parts } = readBody(req);
+        return send(res, 200, { url: await finishUpload(key, uploadId, parts) });
+      }
+      if (step === 'abort') {
+        const { key, uploadId } = readBody(req);
+        await abortUpload(key, uploadId);
+        return send(res, 200, { ok: true });
+      }
+      return await startVideo(req, res); // 'start', and the local-dev shortcut
     } catch (err) {
       console.error(err);
-      return send(res, 500, { error: `동영상 업로드를 준비하지 못했습니다: ${err.message}` });
+      return send(res, 500, { error: `동영상을 올리지 못했습니다: ${err.message}` });
     }
   }
 
