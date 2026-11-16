@@ -50,20 +50,26 @@ export async function signUpload(key, contentType, seconds = 3600) {
   return getSignedUrl(s3(), new PutObjectCommand({ Bucket: OCI_BUCKET, Key: key, ContentType: contentType }), { expiresIn: seconds });
 }
 
-// The browser can only send that upload if the store says its origin is welcome.
+// The browser can only send that upload if the store says its origin is welcome. Oracle's
+// S3 endpoint is picky about this document, so a few shapes are tried from richest to plainest
+// and the first one it accepts wins.
 export async function allowOrigin(origin) {
-  await s3().send(new PutBucketCorsCommand({
-    Bucket: OCI_BUCKET,
-    CORSConfiguration: {
-      CORSRules: [{
-        AllowedOrigins: [origin],
-        AllowedMethods: ['PUT', 'GET', 'HEAD'],
-        AllowedHeaders: ['*'],
-        ExposeHeaders: ['ETag'],
-        MaxAgeSeconds: 3600,
-      }],
-    },
-  }));
+  const shapes = [
+    { AllowedOrigins: [origin], AllowedMethods: ['PUT', 'GET', 'HEAD'], AllowedHeaders: ['*'], ExposeHeaders: ['ETag'], MaxAgeSeconds: 3600 },
+    { AllowedOrigins: [origin], AllowedMethods: ['PUT', 'GET', 'HEAD'], AllowedHeaders: ['*'] },
+    { AllowedOrigins: [origin], AllowedMethods: ['PUT', 'GET'] },
+    { AllowedOrigins: ['*'], AllowedMethods: ['PUT', 'GET'] },
+  ];
+  const tried = [];
+  for (const rule of shapes) {
+    try {
+      await s3().send(new PutBucketCorsCommand({ Bucket: OCI_BUCKET, CORSConfiguration: { CORSRules: [rule] } }));
+      return { ok: true, rule, tried };
+    } catch (err) {
+      tried.push({ rule: Object.keys(rule).join('+'), error: err.message });
+    }
+  }
+  return { ok: false, tried };
 }
 
 export async function deleteMedia(key) {

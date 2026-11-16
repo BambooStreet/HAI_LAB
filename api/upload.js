@@ -127,8 +127,8 @@ export default async function handler(req, res) {
     if (!hasMedia) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
     const origin = `https://${req.headers.host}`;
     try {
-      await allowOrigin(origin);
-      return send(res, 200, { ok: true, origin });
+      const result = await allowOrigin(origin);
+      return send(res, 200, { ...result, origin, error: result.ok ? '' : result.tried.at(-1)?.error });
     } catch (err) {
       return send(res, 200, { ok: false, origin, error: err.message });
     }
