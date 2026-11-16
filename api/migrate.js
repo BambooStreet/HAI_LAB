@@ -1,11 +1,17 @@
-// One-off move of the photos and videos from Vercel Blob to Oracle Object Storage, run from the
-// settings tab. Copies each file the posts point at, then rewrites those links. Safe to run again:
-// anything already carrying an Oracle link is left alone, and nothing is deleted from Blob.
+// Moves the photos and videos from Vercel Blob to Oracle Object Storage, a few at a time.
+// A function only gets a minute, and there is far more than a minute of copying to do, so each
+// call works until its time is nearly up and reports what is left; the settings tab keeps calling
+// until nothing is. Each file's links are rewritten as soon as it lands, so a call that stops
+// half way has still made progress and a re-run skips what it already moved. Nothing is deleted
+// from Blob.
 import { list } from '@vercel/blob';
 import { send, isAdmin } from './_lib/http.js';
 import { blobToken, hasBlob, getJSON, setJSON, sql, hasDb } from './_lib/store.js';
 import { hasMedia, putMedia, publicUrl, PREFIX } from './_lib/media.js';
 
+export const config = { maxDuration: 60 };
+
+const BUDGET_MS = 45_000; // leave room to answer before the function is cut off
 const BLOB_URL_RE = /https:\/\/[\w.-]*\.blob\.vercel-storage\.com\/(hai\/[\w.-]+)/g;
 const TYPES = {
   jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
@@ -13,11 +19,35 @@ const TYPES = {
 };
 const typeOf = (key) => TYPES[key.split('.').pop().toLowerCase()] ?? 'application/octet-stream';
 
-// Every place a media link can sit: memo bodies, and the papers/content documents.
-async function readAll() {
+async function stillOnBlob() {
   const memos = hasDb ? await (await sql())`SELECT id, body FROM hai_memos` : [];
   const [papers, content] = await Promise.all([getJSON('hai:papers'), getJSON('hai:content')]);
-  return { memos, papers, content };
+  const text = JSON.stringify([memos, papers, content]);
+  return { memos, papers, content, keys: [...new Set([...text.matchAll(BLOB_URL_RE)].map((m) => m[1]))] };
+}
+
+// Swaps one file's links wherever they appear, so progress survives a call running out of time.
+async function relink(key, memos, papers, content) {
+  const one = new RegExp(`https://[\\w.-]*\\.blob\\.vercel-storage\\.com/${key.replace('.', '\\.')}`, 'g');
+  const fresh = publicUrl(key);
+  let posts = 0;
+  if (hasDb) {
+    const q = await sql();
+    for (const m of memos) {
+      if (!one.test(m.body)) { one.lastIndex = 0; continue; }
+      one.lastIndex = 0;
+      m.body = m.body.replace(one, fresh);
+      await q`UPDATE hai_memos SET body = ${m.body} WHERE id = ${m.id}`;
+      posts += 1;
+    }
+  }
+  for (const [name, doc] of [['hai:papers', papers], ['hai:content', content]]) {
+    if (!doc) continue;
+    const before = JSON.stringify(doc);
+    const after = before.replace(one, fresh);
+    if (after !== before) await setJSON(name, JSON.parse(after));
+  }
+  return posts;
 }
 
 export default async function handler(req, res) {
@@ -29,53 +59,42 @@ export default async function handler(req, res) {
   if (!hasMedia) return send(res, 503, { error: '오라클 저장소 설정(OCI_*)이 없습니다.' });
   if (!hasBlob) return send(res, 503, { error: '옮겨올 Blob 저장소가 연결되어 있지 않습니다.' });
 
+  const startedAt = Date.now();
   try {
-    const { memos, papers, content } = await readAll();
-    const text = JSON.stringify([memos, papers, content]);
-    const wanted = [...new Set([...text.matchAll(BLOB_URL_RE)].map((m) => m[1]))];
-    if (!wanted.length) return send(res, 200, { done: true, copied: 0, message: '옮길 파일이 없습니다.' });
+    const { memos, papers, content, keys } = await stillOnBlob();
+    if (!keys.length) return send(res, 200, { done: true, copied: 0, remaining: 0, message: '옮길 파일이 없습니다. 모두 끝났어요.' });
 
-    // What the posts ask for, matched against what Blob actually still holds.
     const { blobs } = await list({ prefix: PREFIX, limit: 1000, ...(blobToken && { token: blobToken }) });
     const have = new Map(blobs.map((b) => [b.pathname, b]));
 
     const copied = [];
     const missing = [];
     let bytes = 0;
-    for (const key of wanted) {
+    let posts = 0;
+    for (const key of keys) {
+      if (Date.now() - startedAt > BUDGET_MS) break; // finish cleanly; the next call carries on
       const blob = have.get(key);
       if (!blob) { missing.push(key); continue; }
       const file = await fetch(blob.url);
       if (!file.ok) { missing.push(key); continue; }
       const body = Buffer.from(await file.arrayBuffer());
       await putMedia(key, body, typeOf(key));
+      posts += await relink(key, memos, papers, content);
       bytes += body.length;
       copied.push(key);
     }
 
-    // Links are swapped only for files that made it across; a missing one keeps its old link so
-    // it stays visible as a problem rather than turning into a URL that was never written.
-    const swap = (s) => String(s).replace(BLOB_URL_RE, (whole, key) => (copied.includes(key) ? publicUrl(key) : whole));
-    let posts = 0;
-    if (hasDb) {
-      const q = await sql();
-      for (const m of memos) {
-        const next = swap(m.body);
-        if (next === m.body) continue;
-        await q`UPDATE hai_memos SET body = ${next} WHERE id = ${m.id}`;
-        posts += 1;
-      }
-    }
-    if (papers) await setJSON('hai:papers', JSON.parse(swap(JSON.stringify(papers))));
-    if (content) await setJSON('hai:content', JSON.parse(swap(JSON.stringify(content))));
-
+    const remaining = keys.length - copied.length - missing.length;
     return send(res, 200, {
-      done: true,
+      done: remaining === 0,
       copied: copied.length,
+      remaining,
       bytes,
       posts,
       missing,
-      message: `${copied.length}개를 옮기고 글 ${posts}개의 주소를 바꿨습니다.`,
+      message: remaining
+        ? `${copied.length}개를 옮겼습니다. 남은 ${remaining}개를 이어서 옮깁니다…`
+        : `끝났습니다. 이번에 ${copied.length}개를 옮겼어요.`,
     });
   } catch (err) {
     console.error(err);

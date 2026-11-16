@@ -976,14 +976,28 @@
       if (!confirm('예전 저장소의 사진·동영상을 오라클로 복사하고 글의 주소를 바꿉니다. 계속할까요?')) return;
       const btn = $('migrate-run');
       btn.disabled = true;
-      $('migrate-result').innerHTML = '<p class="memo-status">옮기는 중… 파일이 많으면 1~2분 걸립니다.</p>';
+      // A function only gets a minute, so the server moves what it can and says what is left.
+      let moved = 0;
+      let movedBytes = 0;
+      const missing = new Set();
       try {
-        const r = await request('/api/migrate', 'POST');
-        $('migrate-result').innerHTML = `
-          <p class="memo-status">${esc(r.message)}${r.bytes ? ` (${mb(r.bytes)})` : ''}</p>
-          ${r.missing?.length ? `<p class="memo-status err">원본을 찾지 못한 파일 ${r.missing.length}개 — 주소는 그대로 두었습니다.</p>${fileRows(r.missing)}` : ''}`;
+        for (let round = 1; ; round += 1) {
+          $('migrate-result').innerHTML = `<p class="memo-status">옮기는 중… ${moved}개 완료${moved ? ` (${mb(movedBytes)})` : ''}</p>`;
+          const r = await request('/api/migrate', 'POST');
+          moved += r.copied;
+          movedBytes += r.bytes ?? 0;
+          for (const f of r.missing ?? []) missing.add(f);
+          if (r.done || (!r.copied && !r.remaining)) {
+            $('migrate-result').innerHTML = `
+              <p class="memo-status">끝났습니다 — ${moved}개 (${mb(movedBytes)}) 를 오라클로 옮겼어요.</p>
+              ${missing.size ? `<p class="memo-status err">원본을 찾지 못한 파일 ${missing.size}개 — 주소는 그대로 두었습니다.</p>${fileRows([...missing])}` : ''}`;
+            break;
+          }
+          if (!r.copied) throw new Error('진행이 멈췄습니다. 잠시 후 다시 시도해 주세요.');
+        }
       } catch (err) {
-        $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>`;
+        $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>
+          <p class="memo-status">${moved}개까지는 옮겼습니다. 다시 누르면 이어서 진행합니다.</p>`;
       } finally {
         btn.disabled = false;
       }
