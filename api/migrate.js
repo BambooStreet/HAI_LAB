@@ -27,7 +27,7 @@ async function stillOnBlob() {
 }
 
 // Swaps one file's links wherever they appear, so progress survives a call running out of time.
-async function relink(key, memos, papers, content) {
+async function relink(key, memos) {
   const one = new RegExp(`https://[\\w.-]*\\.blob\\.vercel-storage\\.com/${key.replace('.', '\\.')}`, 'g');
   const fresh = publicUrl(key);
   let posts = 0;
@@ -41,7 +41,10 @@ async function relink(key, memos, papers, content) {
       posts += 1;
     }
   }
-  for (const [name, doc] of [['hai:papers', papers], ['hai:content', content]]) {
+  // Read each document again rather than trusting the copy loaded at the start: these documents
+  // hold several files, and writing back a stale copy would undo the link fixed a moment ago.
+  for (const name of ['hai:papers', 'hai:content']) {
+    const doc = await getJSON(name);
     if (!doc) continue;
     const before = JSON.stringify(doc);
     const after = before.replace(one, fresh);
@@ -61,7 +64,7 @@ export default async function handler(req, res) {
 
   const startedAt = Date.now();
   try {
-    const { memos, papers, content, keys } = await stillOnBlob();
+    const { memos, keys } = await stillOnBlob();
     if (!keys.length) return send(res, 200, { done: true, copied: 0, remaining: 0, message: '옮길 파일이 없습니다. 모두 끝났어요.' });
 
     const { blobs } = await list({ prefix: PREFIX, limit: 1000, ...(blobToken && { token: blobToken }) });
@@ -79,7 +82,7 @@ export default async function handler(req, res) {
       if (!file.ok) { missing.push(key); continue; }
       const body = Buffer.from(await file.arrayBuffer());
       await putMedia(key, body, typeOf(key));
-      posts += await relink(key, memos, papers, content);
+      posts += await relink(key, memos);
       bytes += body.length;
       copied.push(key);
     }
