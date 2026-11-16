@@ -179,6 +179,9 @@
     .stat-table .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; }
 
     /* Settings */
+    .since { text-align: center; color: var(--muted); font-size: 0.8rem; margin: 18px 0 4px; }
+    .since b { color: var(--accent); font-weight: 700; }
+    .since span { opacity: .65; }
     .memo-status { color: var(--muted); font-size: 0.85rem; margin-bottom: 4px; }
     .memo-status.err { color: var(--danger); }
     .gauge { height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-bottom: 8px; }
@@ -523,6 +526,8 @@
           </div>
           <div id="tidy-result"></div>
         </div>
+
+        <p class="since" id="since"></p>
       </div>
 
       <!-- Papers tab -->
@@ -805,6 +810,7 @@
       $('tab-settings').hidden = btn.dataset.tab !== 'settings';
       $('tab-memo').hidden = btn.dataset.tab !== 'memo';
       $('savebar').hidden = btn.dataset.tab !== 'content';
+      if (btn.dataset.tab === 'settings') renderSince();
       if (btn.dataset.tab === 'stats' && !statsLoaded) loadStats();
       if (btn.dataset.tab === 'memo' && !memoLoaded) loadMemos();
     }
@@ -951,6 +957,19 @@
       } finally {
         for (const b of buttons) b.disabled = false;
       }
+    }
+
+    // ---------- 우리 날짜 ----------
+    const SINCE = '2026-09-25';
+
+    function renderSince() {
+      const day = (s) => Math.floor(Date.parse(`${s}T00:00:00+09:00`) / 86400000);
+      const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+      const count = day(today) - day(SINCE) + 1; // 첫날이 1일
+      const next = [100, 200, 300, 365, 500, 730, 1000].find((n) => n >= count);
+      const [y, m, d] = SINCE.split('-').map(Number);
+      $('since').innerHTML = `💛 ${y}년 ${m}월 ${d}일부터 · <b>${count.toLocaleString()}일째</b>`
+        + (next ? `<span> · ${next}일까지 ${(next - count).toLocaleString()}일</span>` : '');
     }
 
     $('migrate-run').addEventListener('click', async () => {
