@@ -1,10 +1,9 @@
-import { del } from '@vercel/blob'; // only for deleting files posted before the move
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { send, isAdmin, readBody } from './_lib/http.js';
-import { blobToken, hasBlob, getJSON, setJSON } from './_lib/store.js';
+import { getJSON, setJSON } from './_lib/store.js';
 import { listMemos } from './_lib/memos.js';
 import {
   hasMedia, putMedia, deleteMedia, listMedia, keyFromUrl, PREFIX, PART_SIZE,
@@ -184,14 +183,10 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const url = new URL(req.url, 'http://x').searchParams.get('url') || '';
     const key = keyFromUrl(url);
-    // Posts written before the move still point at Blob, so either store may be the target.
     if (!key.startsWith(PREFIX)) return send(res, 400, { error: '이 저장소의 파일이 아닙니다.' });
+    if (!hasMedia) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
     try {
-      if (url.includes('oraclecloud.com')) {
-        if (hasMedia) await deleteMedia(key);
-      } else if (hasBlob) {
-        await del(url, { ...(blobToken && { token: blobToken }) });
-      }
+      await deleteMedia(key);
       return send(res, 200, { ok: true });
     } catch (err) {
       console.error(err);

@@ -439,7 +439,7 @@
 
     <div id="app" hidden>
       <div class="banner" id="db-warn" hidden>⚠️ 데이터베이스가 연결되지 않아 저장이 되지 않습니다. Vercel 프로젝트의 Storage 탭에서 Neon 데이터베이스를 연결해 주세요.</div>
-      <div class="banner" id="blob-warn" hidden>⚠️ 사진 저장소(Blob)가 연결되지 않아 사진을 올릴 수 없습니다. Vercel 프로젝트의 Storage 탭에서 Blob을 연결하고 Redeploy 해 주세요.</div>
+      <div class="banner" id="media-warn" hidden>⚠️ 사진·동영상 저장소가 연결되지 않아 올릴 수 없습니다. Vercel 프로젝트의 환경변수에 OCI_* 값을 넣고 Redeploy 해 주세요.</div>
 
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="memo" aria-selected="true">📝 메모장</button>
@@ -499,23 +499,13 @@
       <div id="tab-settings" hidden>
         <div class="card">
           <h3>💾 저장 공간</h3>
-          <p class="hint">무료 요금제는 저장 1GB까지입니다. 넘기면 요금이 붙는 대신 사진·동영상이 한 달 동안 안 보이게 되니 미리 정리해 주세요.</p>
+          <p class="hint">오라클 무료 한도는 저장 20GB, 월 전송 10TB입니다. 여유가 넉넉하지만 안 쓰는 파일은 정리해 두면 좋아요.</p>
           <div id="storage-usage"><p class="memo-status">확인하려면 아래 버튼을 눌러주세요.</p></div>
           <div class="form-actions" style="justify-content: flex-start">
             <button class="btn" type="button" id="storage-scan">저장소 점검</button>
             <button class="btn danger" type="button" id="storage-clean" hidden>안 쓰는 파일 지우기</button>
           </div>
           <div id="storage-result"></div>
-        </div>
-
-        <div class="card">
-          <h3>📦 오라클로 옮기기</h3>
-          <p class="hint">예전에 Vercel에 올린 사진·동영상을 오라클 저장소로 복사하고, 글의 주소를 새 주소로 바꿉니다. 원본은 지우지 않으니 여러 번 눌러도 안전합니다.</p>
-          <div class="form-actions" style="justify-content: flex-start">
-            <button class="btn primary" type="button" id="migrate-run">옮기기 실행</button>
-            <button class="btn" type="button" id="allow-origin">동영상 업로드 허용</button>
-          </div>
-          <div id="migrate-result"></div>
         </div>
 
         <div class="card">
@@ -641,7 +631,7 @@
       const dropped = [...new Set(mediaUrls(before).filter((url) => !mediaUrls(after).includes(url)))];
       if (!dropped.length) return;
       const inUse = new Set([...memos, ...papers].flatMap((post) => mediaUrls(post.body)));
-      const orphans = dropped.filter((url) => !inUse.has(url) && url.includes('.blob.vercel-storage.com/hai/'));
+      const orphans = dropped.filter((url) => !inUse.has(url) && url.includes('oraclecloud.com'));
       const freed = await Promise.allSettled(
         orphans.map((url) => request(`/api/upload?url=${encodeURIComponent(url)}`, 'DELETE')),
       );
@@ -803,10 +793,10 @@
     // ---------- auth ----------
     async function login(pw) {
       password = pw;
-      const { db, blob, blobEnv = [], passwordRequired } = await request('/api/login', 'POST');
-      $('blob-warn').hidden = blob;
-      if (!blob) {
-        $('blob-warn').append(` (서버에서 보이는 Blob 관련 환경변수: ${blobEnv.length ? blobEnv.join(', ') : '없음'})`);
+      const { db, media, mediaEnv = [], passwordRequired } = await request('/api/login', 'POST');
+      $('media-warn').hidden = media;
+      if (!media) {
+        $('media-warn').append(` (서버에서 보이는 OCI 환경변수: ${mediaEnv.length ? mediaEnv.join(', ') : '없음'})`);
       }
       if (passwordRequired) try { sessionStorage.setItem(PW_KEY, pw); } catch {}
       $('db-warn').hidden = db;
@@ -935,7 +925,7 @@
     // ---------- storage cleanup ----------
     const mb = (bytes) => `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 
-    const FREE_LIMIT = 1024 * 1024 * 1024; // Vercel Blob's free tier
+    const FREE_LIMIT = 20 * 1024 * 1024 * 1024; // Oracle's Always Free allowance
     const fileRows = (files) => `<table class="stat-table"><tbody>${files.map((f) => `
       <tr><td class="name">${esc(String(f.pathname ?? f).replace('hai/', ''))}</td>
           <td>${f.size == null ? '' : mb(f.size)}</td></tr>`).join('')}</tbody></table>`;
@@ -951,7 +941,6 @@
           ${seen ? `<p class="memo-status">마지막으로 확인한 용량: ${mb(seen.totalBytes)} · 파일 ${seen.total}개 (${timeOf(seen.at)})</p>` : ''}`;
         $('storage-result').innerHTML = `
           <p class="memo-status">지금 글들이 쓰고 있는 파일: <b>${s.referenced}개</b>${s.videos ? ` (그중 동영상 ${s.videos}개)` : ''}</p>
-          <p class="memo-status">${s.videos ? '동영상이 용량을 가장 많이 차지합니다. 유튜브에 올리고 주소만 붙이는 방식을 권해요.' : ''}</p>
           <p class="memo-status">서버가 알려준 이유: ${esc(s.reason || '')}</p>`;
         return;
       }
@@ -961,7 +950,7 @@
       $('storage-usage').innerHTML = `
         <div class="gauge ${level}"><i style="width:${used}%"></i></div>
         <p class="memo-status${level ? ' err' : ''}">
-          ${mb(s.totalBytes)} / 1GB 사용 (${used}%) · 파일 ${s.total}개
+          ${mb(s.totalBytes)} / 20GB 사용 (${used}%) · 파일 ${s.total}개
           ${used >= 90 ? ' — 곧 한도예요. 안 쓰는 파일부터 지워주세요.'
             : used >= 70 ? ' — 여유가 줄고 있어요.' : ''}
         </p>`;
@@ -1015,56 +1004,6 @@
       $('since').innerHTML = `💛 ${y}년 ${m}월 ${d}일부터 · <b>${count.toLocaleString()}일째</b>`
         + (next ? `<span> · ${next}일까지 ${(next - count).toLocaleString()}일</span>` : '');
     }
-
-    $('migrate-run').addEventListener('click', async () => {
-      if (!confirm('예전 저장소의 사진·동영상을 오라클로 복사하고 글의 주소를 바꿉니다. 계속할까요?')) return;
-      const btn = $('migrate-run');
-      btn.disabled = true;
-      // A function only gets a minute, so the server moves what it can and says what is left.
-      let moved = 0;
-      let movedBytes = 0;
-      const missing = new Set();
-      try {
-        for (let round = 1; ; round += 1) {
-          $('migrate-result').innerHTML = `<p class="memo-status">옮기는 중… ${moved}개 완료${moved ? ` (${mb(movedBytes)})` : ''}</p>`;
-          const r = await request('/api/migrate', 'POST');
-          moved += r.copied;
-          movedBytes += r.bytes ?? 0;
-          for (const f of r.missing ?? []) missing.add(f);
-          if (r.done || (!r.copied && !r.remaining)) {
-            $('migrate-result').innerHTML = `
-              <p class="memo-status">끝났습니다 — ${moved}개 (${mb(movedBytes)}) 를 오라클로 옮겼어요.</p>
-              ${missing.size ? `<p class="memo-status err">원본을 찾지 못한 파일 ${missing.size}개 — 주소는 그대로 두었습니다.</p>${fileRows([...missing])}` : ''}`;
-            break;
-          }
-          if (!r.copied) throw new Error('진행이 멈췄습니다. 잠시 후 다시 시도해 주세요.');
-        }
-      } catch (err) {
-        $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>
-          <p class="memo-status">${moved}개까지는 옮겼습니다. 다시 누르면 이어서 진행합니다.</p>`;
-      } finally {
-        btn.disabled = false;
-      }
-    });
-
-    // Videos are sent from the browser straight to the store, which only accepts them once the
-    // store has been told this site is allowed to.
-    $('allow-origin').addEventListener('click', async () => {
-      const btn = $('allow-origin');
-      btn.disabled = true;
-      $('migrate-result').innerHTML = '<p class="memo-status">저장소에 설정하는 중…</p>';
-      try {
-        const r = await request('/api/upload?allow-origin=1', 'POST');
-        $('migrate-result').innerHTML = r.ok
-          ? `<p class="memo-status">됐습니다. 이제 ${esc(r.origin)} 에서 동영상을 바로 올릴 수 있어요.</p>`
-          : `<p class="memo-status err">저장소가 거절했습니다: ${esc(r.error)}</p>
-             <p class="memo-status">동영상은 유튜브에 올리고 주소를 붙여넣는 방식으로 쓰셔야 합니다.</p>`;
-      } catch (err) {
-        $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>`;
-      } finally {
-        btn.disabled = false;
-      }
-    });
 
     $('tidy-scan').addEventListener('click', () => tidyAction('GET'));
     $('tidy-clean').addEventListener('click', () => {

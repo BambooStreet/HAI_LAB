@@ -57,8 +57,8 @@ try {
   check('기본 글 2개가 있고 공지가 맨 위', seeded.length === 2 && seeded[0].title === '공지',
     seeded.map((m) => m.title).join(' / '));
 
-  const photo = 'https://x.public.blob.vercel-storage.com/hai/1-a.png';
-  const clip = 'https://x.public.blob.vercel-storage.com/hai/2-b.mp4';
+  const photo = 'https://objectstorage.ap-tokyo-1.oraclecloud.com/n/ns/b/hai/o/hai%2F1-a.png';
+  const clip = 'https://objectstorage.ap-tokyo-1.oraclecloud.com/n/ns/b/hai/o/hai%2F2-b.mp4';
   const body = `![](${photo})\n![](${clip})\n설명입니다`;
   const created = (await api('/api/memo', { method: 'POST', body: { title: '테스트', body } })).body.memo;
   check('새 글이 저장됨', created?.body === body);

@@ -15,8 +15,7 @@ export const PREFIX = 'hai/';
 export const publicUrl = (key) =>
   `https://objectstorage.${OCI_REGION}.oraclecloud.com/n/${OCI_NAMESPACE}/b/${OCI_BUCKET}/o/${encodeURIComponent(key)}`;
 
-// Every URL this project has ever written, so old posts can be recognised and rewritten.
-export const MEDIA_URL_RE = /https:\/\/[\w.-]*(?:blob\.vercel-storage\.com|oraclecloud\.com)\/[^\s)"'<]+/g;
+// The file's name inside the bucket, taken back out of a stored URL.
 export const keyFromUrl = (url) => {
   const m = /\/o\/([^?\s]+)/.exec(url) ?? /\/(hai\/[\w.-]+)/.exec(url);
   return m ? decodeURIComponent(m[1]) : '';
