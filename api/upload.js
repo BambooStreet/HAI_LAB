@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { send, isAdmin, readBody } from './_lib/http.js';
 import { blobToken, hasBlob, getJSON, setJSON } from './_lib/store.js';
 import { listMemos } from './_lib/memos.js';
+import { hasMedia, putMedia, deleteMedia, listMedia, keyFromUrl, PREFIX } from './_lib/media.js';
 
 // Images arrive already resized by the admin page, as a raw application/octet-stream body.
 const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
@@ -91,8 +92,8 @@ async function referencedFiles() {
 }
 
 async function findOrphans() {
-  const [{ blobs }, memos, papers, content] = await Promise.all([
-    list({ prefix: 'hai/', limit: 1000, ...(blobToken && { token: blobToken }) }),
+  const [blobs, memos, papers, content] = await Promise.all([
+    listMedia(),
     listMemos(),
     getJSON('hai:papers'),
     getJSON('hai:content'),
@@ -172,7 +173,7 @@ export default async function handler(req, res) {
   // Storage housekeeping, both admin-only.
   if (params.has('orphans') && (req.method === 'GET' || req.method === 'DELETE')) {
     if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
-    if (!hasBlob) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
+    if (!hasMedia) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
     try {
       const { orphans, summary } = await findOrphans();
       // Kept so the page can still say how full the store was the last time it could look.
@@ -225,12 +226,15 @@ export default async function handler(req, res) {
   // Frees the storage a photo or video took once no post shows it any more.
   if (req.method === 'DELETE') {
     const url = new URL(req.url, 'http://x').searchParams.get('url') || '';
-    if (!/^https:\/\/[\w.-]+\.blob\.vercel-storage\.com\/hai\//.test(url)) {
-      return send(res, 400, { error: '이 저장소의 파일이 아닙니다.' });
-    }
-    if (!hasBlob) return send(res, 200, { ok: true, skipped: 'no-blob' });
+    const key = keyFromUrl(url);
+    // Posts written before the move still point at Blob, so either store may be the target.
+    if (!key.startsWith(PREFIX)) return send(res, 400, { error: '이 저장소의 파일이 아닙니다.' });
     try {
-      await del(url, { ...(blobToken && { token: blobToken }) });
+      if (url.includes('oraclecloud.com')) {
+        if (hasMedia) await deleteMedia(key);
+      } else if (hasBlob) {
+        await del(url, { ...(blobToken && { token: blobToken }) });
+      }
       return send(res, 200, { ok: true });
     } catch (err) {
       console.error(err);
@@ -259,12 +263,11 @@ export default async function handler(req, res) {
     const name = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
 
     if (isLocal) return send(res, 200, { url: await saveLocally(req, name, buffer) });
-    if (!hasBlob) {
-      return send(res, 503, { error: '사진 저장소가 연결되지 않았습니다. Vercel 프로젝트에 Blob을 연결해 주세요.' });
+    if (!hasMedia) {
+      return send(res, 503, { error: '사진 저장소가 연결되지 않았습니다. 환경변수(OCI_*)를 확인해 주세요.' });
     }
 
-    const blob = await put(`hai/${name}`, buffer, { access: 'public', contentType: type, ...(blobToken && { token: blobToken }) });
-    return send(res, 200, { url: blob.url });
+    return send(res, 200, { url: await putMedia(PREFIX + name, buffer, type) });
   } catch (err) {
     console.error(err);
     return send(res, 500, { error: `사진을 올리지 못했습니다: ${err.message}` });

@@ -506,6 +506,15 @@
         </div>
 
         <div class="card">
+          <h3>📦 오라클로 옮기기</h3>
+          <p class="hint">예전에 Vercel에 올린 사진·동영상을 오라클 저장소로 복사하고, 글의 주소를 새 주소로 바꿉니다. 원본은 지우지 않으니 여러 번 눌러도 안전합니다.</p>
+          <div class="form-actions" style="justify-content: flex-start">
+            <button class="btn primary" type="button" id="migrate-run">옮기기 실행</button>
+          </div>
+          <div id="migrate-result"></div>
+        </div>
+
+        <div class="card">
           <h3>🧹 데이터 점검</h3>
           <p class="hint">삭제된 글에 남은 댓글·좋아요처럼 확실히 필요 없는 것만 지웁니다. 글과 사진은 건드리지 않고, 확인이 필요한 것은 목록으로만 알려드려요.</p>
           <div class="form-actions" style="justify-content: flex-start">
@@ -943,6 +952,23 @@
         for (const b of buttons) b.disabled = false;
       }
     }
+
+    $('migrate-run').addEventListener('click', async () => {
+      if (!confirm('예전 저장소의 사진·동영상을 오라클로 복사하고 글의 주소를 바꿉니다. 계속할까요?')) return;
+      const btn = $('migrate-run');
+      btn.disabled = true;
+      $('migrate-result').innerHTML = '<p class="memo-status">옮기는 중… 파일이 많으면 1~2분 걸립니다.</p>';
+      try {
+        const r = await request('/api/migrate', 'POST');
+        $('migrate-result').innerHTML = `
+          <p class="memo-status">${esc(r.message)}${r.bytes ? ` (${mb(r.bytes)})` : ''}</p>
+          ${r.missing?.length ? `<p class="memo-status err">원본을 찾지 못한 파일 ${r.missing.length}개 — 주소는 그대로 두었습니다.</p>${fileRows(r.missing)}` : ''}`;
+      } catch (err) {
+        $('migrate-result').innerHTML = `<p class="memo-status err">${esc(err.message)}</p>`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
 
     $('tidy-scan').addEventListener('click', () => tidyAction('GET'));
     $('tidy-clean').addEventListener('click', () => {
