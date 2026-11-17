@@ -684,6 +684,33 @@
 
     // ---------- image upload ----------
     // Resize in the browser first (phone photos are huge), then POST the raw bytes to /api/upload.
+    // What a file says it is and what it holds are not always the same. A phone's photo app can
+    // hand over an HEIC named .JPG and labelled image/jpeg; the bytes read fine and both decoders
+    // then refuse it, which on its own looks like a broken photo. Read the first bytes and say
+    // what it really is, so the fix is obvious instead of guesswork.
+    async function whyNotAnImage(file) {
+      const name = file.name || '사진';
+      const kb = Math.round(file.size / 1024);
+      const b = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+      const ascii = (from, to) => String.fromCharCode(...b.slice(from, to));
+      const starts = (...bytes) => bytes.every((v, i) => b[i] === v);
+
+      if (ascii(4, 8) === 'ftyp') {
+        const brand = ascii(8, 12);
+        if (/^(heic|heix|hevc|hevx|mif1|msf1)$/.test(brand)) {
+          return `${name} 은(는) 이름만 사진이고 속은 HEIC예요. 이 브라우저는 HEIC를 열지 못합니다 — `
+            + '갤러리에서 "JPEG로 저장" 하거나, 카메라 설정에서 저장 형식을 JPEG로 바꾼 뒤 올려주세요.';
+        }
+        if (brand === 'avif') return `${name} 은(는) AVIF예요. 이 브라우저가 열지 못합니다. JPEG로 저장해 올려주세요.`;
+        return `${name} 은(는) 사진이 아니라 동영상 계열 파일이에요 (${brand}).`;
+      }
+      if (starts(0xff, 0xd8, 0xff)) return `${name} 은(는) JPEG인데 파일이 깨진 것 같아요 (${kb}KB). 다시 내려받아 올려주세요.`;
+      if (starts(0x89, 0x50, 0x4e, 0x47)) return `${name} 은(는) PNG인데 파일이 깨진 것 같아요 (${kb}KB).`;
+      if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return `${name} 은(는) WebP인데 파일이 깨진 것 같아요 (${kb}KB).`;
+      if (ascii(0, 3) === 'GIF') return `${name} 은(는) GIF인데 파일이 깨진 것 같아요 (${kb}KB).`;
+      return `${name} 을(를) 열지 못했어요 (${kb}KB, ${file.type || '형식 모름'}). 다른 사진으로 해보시겠어요?`;
+    }
+
     // Two ways in, because they are not the same decoder. A photo createImageBitmap refuses —
     // an unusual colour profile, an EXIF quirk, whatever the phone's camera wrote — often still
     // loads as an <img>. Trying only the first turned those into "열지 못했어요" for no good
@@ -701,8 +728,7 @@
         return { img, w: img.naturalWidth, h: img.naturalHeight, release: () => URL.revokeObjectURL(url) };
       } catch {
         URL.revokeObjectURL(url);
-        const kb = Math.round(file.size / 1024);
-        throw new Error(`${file.name || '사진'} 을(를) 열지 못했어요 (${kb}KB, ${file.type || '형식 모름'}). 다른 사진으로 해보시겠어요?`);
+        throw new Error(await whyNotAnImage(file));
       }
     }
 
