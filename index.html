@@ -30,6 +30,13 @@
     @media (prefers-reduced-motion: reduce) {
       .waves, .critters span { animation: none; }
     }
+    /* Standing on the waves, left of the title. The hero is centred and the tree is well clear
+       of it even on a narrow phone, so the two never meet. */
+    .hero .tree {
+      position: absolute; z-index: 1;
+      left: clamp(10px, 5vw, 80px); bottom: 26px;
+      width: clamp(72px, 12vw, 140px); height: auto;
+    }
 
     /* Sections */
     section { max-width: 960px; margin: 0 auto; padding: 80px 20px; }
@@ -223,8 +230,10 @@
   <script type="module">
     import { esc, rich, safeUrl, renderBody, firstImage } from '/assets/common.js';
     import { startSnow } from '/assets/snow.js';
+    import { plantTree } from '/assets/tree.js';
 
     startSnow();
+    plantTree(document.querySelector('.hero'));
 
     const $ = (id) => document.getElementById(id);
     const PAGE_SIZE = 10;

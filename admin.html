@@ -129,6 +129,8 @@
     .img-sizer button.on { background: var(--accent); color: var(--on-accent); font-weight: 700; }
     .img-sizer button.danger { color: var(--danger); margin-left: 4px; border-left: 1px solid var(--line); border-radius: 0 7px 7px 0; }
 
+    .nav-inner .tree { height: 40px; width: auto; margin: -6px 0 -6px 2px; margin-right: auto; }
+
     .savebar {
       position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
       background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(8px);
@@ -587,8 +589,10 @@
   <script type="module">
     import { esc, renderBody, safeUrl, VIDEO_RE } from '/assets/common.js';
     import { startSnow } from '/assets/snow.js';
+    import { plantTree } from '/assets/tree.js';
 
     startSnow();
+    plantTree(document.querySelector('.nav-inner .logo'), '', 'afterend');
 
     const $ = (id) => document.getElementById(id);
     const PW_KEY = 'hai-admin-pw';

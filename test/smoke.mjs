@@ -134,6 +134,13 @@ try {
   stepFlakes(far, 0.05, 800, 600);
   check('눈송이가 화면 안에 머무름', far.every((f) => f.x >= -f.r - 1 && f.x <= 800 + f.r + 1));
 
+  const { treeSvg } = await import(
+    pathToFileURL(fileURLToPath(new URL('../assets/tree.js', import.meta.url))).href);
+  const tree = treeSvg();
+  check('트리에 별과 전구가 달려 있음',
+    tree.includes('tree-star') && (tree.match(/tree-light/g) ?? []).length >= 10);
+  check('전구마다 깜빡이는 시점이 다름', new Set(tree.match(/--d:[\d.]+s/g)).size >= 10);
+
   console.log('\n사진·동영상 올리기');
   // Locally there is no cloud storage, so files land in a temp folder and are served back from it.
   const raw = (extra) => ({ 'Content-Type': 'application/octet-stream', 'x-admin-password': PASSWORD, ...extra });

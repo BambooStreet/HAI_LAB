@@ -54,6 +54,17 @@ nav {
    click. prefers-reduced-motion is honoured in snow.js, which then adds nothing at all. */
 .snow { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
 
+/* Christmas tree. Each page places and sizes its own; this is only how it looks. */
+.tree { pointer-events: none; }
+.tree-tier { fill: #2f6b4f; stroke: #244f3c; stroke-width: 1.5; stroke-linejoin: round; }
+.tree-tier:last-of-type { fill: #357a5a; }
+.tree-light { animation: twinkle 2.6s ease-in-out infinite; animation-delay: var(--d, 0s); }
+.tree-star { animation: twinkle 3.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes twinkle { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) {
+  .tree-light, .tree-star { animation: none; }
+}
+
 [hidden] { display: none !important; }
 
 .body-img { display: block; max-width: 100%; max-height: 70vh; margin: 8px 0; border-radius: 12px; border: 1px solid var(--line); }
