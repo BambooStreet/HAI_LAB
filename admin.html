@@ -205,9 +205,13 @@
        rather than as two of them happening to look in. */
     .page-peek.left { left: 0; bottom: 14px; height: 116px; }  /* drawn cut off at its right */
     .page-peek.right { right: 0; bottom: 44%; height: 96px; }  /* drawn cut off at its left */
+    /* This one is drawn standing, toes on the bottom edge, so it is not flipped and it sits
+       flat on the floor of the window rather than leaning in from the side. */
+    .page-peek.corner { right: 8px; bottom: 0; height: 104px; transform: none; }
     @media (max-width: 640px) {
       .page-peek.left { height: 80px; bottom: 8px; }
       .page-peek.right { height: 72px; bottom: 50%; }
+      .page-peek.corner { height: 76px; right: 2px; }
     }
     .memo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .memo-info { min-width: 0; }
@@ -603,6 +607,7 @@
 
   <img class="page-peek left" src="/assets/img/peek-hachiware.svg" alt="" aria-hidden="true" />
   <img class="page-peek right" src="/assets/img/peek-usagi.svg" alt="" aria-hidden="true" />
+  <img class="page-peek corner" src="/assets/img/peek-kurimanju.svg" alt="" aria-hidden="true" />
 
   <script type="module">
     import { esc, renderBody, safeUrl, VIDEO_RE } from '/assets/common.js';
