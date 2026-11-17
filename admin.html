@@ -686,7 +686,12 @@
     // Resize in the browser first (phone photos are huge), then POST the raw bytes to /api/upload.
     async function resizeImage(file, max = 1600) {
       if (file.type === 'image/gif') return file; // keep animation
-      const bitmap = await createImageBitmap(file);
+      let bitmap;
+      try {
+        bitmap = await createImageBitmap(file);
+      } catch {
+        throw new Error(`${file.name || '사진'} 을(를) 열지 못했어요. 갤러리에서 다시 골라주세요.`);
+      }
       const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(bitmap.width * scale);
@@ -801,13 +806,34 @@
     // back as the most recent picture, so every photo ends up the same one. Copying the bytes
     // straight away, before any upload waits, pins each pick to what the person actually chose.
     // Videos are left alone: they are picked one at a time and far too big to hold in memory.
+    // A reference can also come back empty — the picture lives in the cloud and was never
+    // downloaded, or the permission the picker handed over has lapsed. Handing that on as if it
+    // were a photo only moves the failure somewhere less helpful, where the browser says "the
+    // source image could not be decoded" and the person has no idea which photo or what to do.
     async function heldInMemory(file) {
       if (isVideo(file)) return file;
+      const name = file.name || '사진';
+      let bytes;
       try {
-        return new File([await file.arrayBuffer()], file.name, { type: file.type });
+        bytes = await file.arrayBuffer();
       } catch {
-        return file;
+        throw new Error(`${name} 을(를) 읽지 못했어요. 갤러리에서 다시 골라주세요.`);
       }
+      if (!bytes.byteLength) {
+        throw new Error(`${name} 이(가) 비어 있어요. 클라우드에만 있는 사진이면 기기에 먼저 내려받아 주세요.`);
+      }
+      return new File([bytes], name, { type: file.type });
+    }
+
+    // Reads what it can and reports the rest, so one unreadable pick doesn't lose the others.
+    async function heldInMemoryAll(files) {
+      const done = await Promise.allSettled(files.map(heldInMemory));
+      const kept = [];
+      for (const r of done) {
+        if (r.status === 'fulfilled') kept.push(r.value);
+        else toast(r.reason.message, true);
+      }
+      return kept;
     }
 
     async function request(url, method, body) {
@@ -1296,7 +1322,7 @@
         el.focus();
         const videos = files.filter(isVideo).length;
         toast(videos ? `동영상 ${videos}개 올리는 중…` : `사진 ${files.length}장 올리는 중…`);
-        await Promise.all((await Promise.all(files.map(heldInMemory))).map(async (file) => {
+        await Promise.all((await heldInMemoryAll(files)).map(async (file) => {
           const video = isVideo(file);
           const node = document.createElement(video ? 'video' : 'img');
           const local = URL.createObjectURL(file);
@@ -1567,7 +1593,8 @@
     async function addMemoFiles(list) {
       const picked = mediaFiles(list);
       if (!picked.length) return;
-      const files = await Promise.all(picked.map(heldInMemory));
+      const files = await heldInMemoryAll(picked);
+      if (!files.length) return;
 
       // Every pick is added at once, then uploaded one by one in the background. Adding them as
       // each upload finished kept dragging the view to the newest photo, so flipping back to an
