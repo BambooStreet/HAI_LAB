@@ -1,7 +1,7 @@
 // Smoke test: starts the dev server on its own port with in-memory data (never touches the real
 // database) and walks the API the admin page uses. Run with: npm test
 import { spawn } from 'node:child_process';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 
@@ -140,6 +140,19 @@ try {
   check('트리에 별과 전구가 달려 있음',
     tree.includes('tree-star') && (tree.match(/tree-light/g) ?? []).length >= 10);
   check('전구마다 깜빡이는 시점이 다름', new Set(tree.match(/--d:[\d.]+s/g)).size >= 10);
+
+  // A mistyped asset path shows up as nothing on the page and nothing in the console, so check
+  // every /assets/… the pages ask for is really there.
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  for (const page of ['index.html', 'admin.html']) {
+    const html = await readFile(join(root, page), 'utf8');
+    const asked = [...new Set([...html.matchAll(/["'(](\/assets\/[\w.-]+)/g)].map((m) => m[1]))];
+    const gone = [];
+    for (const a of asked) {
+      try { await stat(join(root, a.slice(1))); } catch { gone.push(a); }
+    }
+    check(`${page} 가 부르는 파일이 모두 있음 (${asked.length}개)`, gone.length === 0, gone.join(', '));
+  }
 
   console.log('\n파일 대조');
   // The store calls a file hai/x.jpg; a link in a post spells the same thing hai%2Fx.jpg.

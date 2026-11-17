@@ -17,7 +17,16 @@ const port = Number(process.env.PORT) || 3000;
 delete process.env.VERCEL;
 delete process.env.VERCEL_ENV;
 
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json' };
+// A type Vercel sends but this server doesn't will work in production and quietly fail here —
+// an <img> pointing at an SVG served as octet-stream just shows nothing — so keep this in step
+// with the kinds of file the site actually holds.
+const types = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.webm': 'video/webm',
+};
 
 http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');

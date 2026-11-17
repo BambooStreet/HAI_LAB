@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="270 40 350 625" fill="none" overflow="hidden" role="img" aria-labelledby="rabbit-title">
+<title id="rabbit-title">왼쪽 가장자리에서 고개를 빼꼼 내미는 토끼</title>
+<defs><clipPath id="frame"><path d="M270 40H620V665H270Z"/></clipPath></defs>
+<g clip-path="url(#frame)">
+<g transform="rotate(25 380 400)" stroke="#100e09" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+<!-- The body continues beyond the left edge without a wall or border. -->
+<path fill="#f9edc6" d="M100 285 Q217 243 308 237 C289 198 254 117 259 91 Q261 67 282 78 C316 94 351 174 354 228 C351 179 312 104 320 75 Q324 51 343 68 C375 97 397 165 395 224 Q465 223 518 262 C575 303 594 362 581 422 Q575 467 548 493 Q555 548 513 590 Q480 627 427 635 Q300 669 100 638Z"/>
+<!-- Pink inner ears -->
+<path stroke="none" fill="#f4b9c4" d="M283 91 C309 108 340 173 346 211 Q349 231 333 218 C311 197 285 132 283 105Z"/>
+<path stroke="none" fill="#f4b9c4" d="M343 81 C370 107 389 167 389 204 Q387 224 375 205 C365 181 341 117 340 94Z"/>
+<!-- Brows -->
+<path d="M245 354 Q250 307 281 286 Q292 280 304 280 M409 271 Q445 262 480 287 Q502 307 508 342"/>
+<!-- Cheeks -->
+<path stroke="none" fill="#f4b9c4" d="M222 412 C229 391 253 386 277 395 C306 402 316 429 298 446 C282 464 247 461 230 447 Q216 433 222 412Z"/>
+<path stroke="none" fill="#f4b9c4" d="M472 389 C482 371 510 362 533 373 C555 383 560 406 544 420 C525 436 495 438 479 425 Q465 414 472 389Z"/>
+<g stroke-width="9"><path d="M245 415 L244 432 M267 414 L266 427 M288 413 L288 426 M488 390 L485 405 M510 389 L507 402 M531 386 L529 398"/></g>
+<!-- Eyes and highlights -->
+<path stroke="none" fill="#100e09" d="M299 370 Q310 352 330 358 Q348 362 347 380 Q347 400 329 403 Q309 407 300 393 Q292 382 299 370Z M423 357 Q435 342 451 348 Q468 352 469 371 Q468 389 450 392 Q431 394 424 381 Q417 369 423 357Z"/>
+<path stroke="none" fill="#fff" d="M309 370 Q317 361 323 366 Q327 371 317 377 Q308 382 309 370Z M322 389 Q332 389 337 382 Q340 389 329 394 Q321 396 322 389Z M433 358 Q440 352 446 357 Q451 364 442 365 Q432 366 433 358Z M440 379 Q450 380 458 373 Q460 380 449 383 Q441 386 440 379Z"/>
+<!-- Little smiling mouth -->
+<path stroke-width="10" d="M365 423 Q378 439 393 425 Q400 419 396 412 M394 425 Q407 438 420 426 L423 418 M403 433 Q410 444 402 446"/>
+</g>
+<!-- A small paw rests directly at the image edge. -->
+<path fill="#f9edc6" stroke="#100e09" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" d="M254 514 Q282 497 296 512 Q310 526 296 538 Q313 548 299 563 Q283 575 256 563"/>
+</g>
+</svg>

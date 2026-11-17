@@ -193,7 +193,15 @@
 
     /* Memo board */
     .memo-list { display: grid; gap: 12px; }
-    .memo { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+    .memo { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+    /* A character looks in from the post's own border — the post, not the page, so it stays
+       put whatever the window is doing, and on a phone it never ends up stuck to the screen
+       edge. Each drawing is cut off on one side; flipping it puts that cut against the border,
+       and it then reads as someone leaning round the edge rather than a sticker dropped on
+       top. Sized by height so the two, drawn at different proportions, come out alike. */
+    .memo-peek { position: absolute; bottom: 8px; height: 82px; width: auto; pointer-events: none; }
+    .memo-peek.left { left: 0; transform: scaleX(-1); }   /* drawn cut off at its right */
+    .memo-peek.right { right: 0; transform: scaleX(-1); } /* drawn cut off at its left */
     .memo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .memo-info { min-width: 0; }
     .memo-head h4 { font-size: 1rem; font-weight: 700; margin-bottom: 2px; overflow-wrap: anywhere; }
@@ -1887,11 +1895,29 @@
         ${items.some((m) => m.caption) ? `<p class="feed-caption"${items[0].caption ? '' : ' hidden'}>${esc(items[0].caption)}</p>` : ''}`;
     }
 
+    const PEEKERS = [
+      { side: 'left', src: '/assets/peek-hachiware.svg' },
+      { side: 'right', src: '/assets/peek-usagi.svg' },
+    ];
+
+    // Roughly one post in four gets someone, one of the two, on opposite sides. Worked out from
+    // the post's own id rather than at random, so a given post either always has one or never
+    // does: a refresh or a tab change must not make them hop about. Eight slots — one each for
+    // the two, six for nobody — and never both on the same post.
+    function peekOf(id) {
+      let n = 0;
+      for (const ch of String(id)) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
+      const slot = n % 8;
+      return slot === 0 ? PEEKERS[0] : slot === 4 ? PEEKERS[1] : null;
+    }
+
     function memoCard(m) {
+      const peek = peekOf(m.id);
       const showComments = m.comments.length > 0 || openComments.has(m.id);
       const caption = captionOf(m.body);
       return `
         <article class="memo" data-memo="${esc(m.id)}">
+          ${peek ? `<img class="memo-peek ${peek.side}" src="${peek.src}" alt="" aria-hidden="true" />` : ''}
           <header class="memo-head">
             <div class="memo-info">
               ${m.title ? `<h4>${esc(m.title)}</h4>` : ''}
