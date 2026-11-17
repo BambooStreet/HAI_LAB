@@ -72,11 +72,16 @@ async function readBuffer(req) {
 const KEEP_RECENT_MS = 60 * 60 * 1000;
 const USAGE_KEY = 'hai:blob-usage'; // last reading, so a blocked store can still show something
 
+// The store names a file hai/<name>, but a link inside a post carries it through the URL's
+// path, where the slash is written %2F. Both spellings mean the same file, so every comparison
+// here goes through this and never through the raw text.
+const KEY_RE = /hai(?:\/|%2F)([\w.-]+)/gi;
+export const keysUsedIn = (text) => new Set([...text.matchAll(KEY_RE)].map((m) => PREFIX + m[1]));
+
 // What the posts point at, worked out without touching the store.
 async function referencedFiles() {
   const [memos, papers, content] = await Promise.all([listMemos(), getJSON('hai:papers'), getJSON('hai:content')]);
-  const shown = JSON.stringify([memos, papers, content]);
-  const files = [...new Set([...shown.matchAll(/hai\/[\w.-]+/g)].map((m) => m[0]))];
+  const files = [...keysUsedIn(JSON.stringify([memos, papers, content]))];
   const videos = files.filter((p) => /\.(mp4|webm|mov)$/i.test(p));
   return { referenced: files.length, videos: videos.length, lastSeen: await getJSON(USAGE_KEY) };
 }
@@ -88,17 +93,17 @@ async function findOrphans() {
     getJSON('hai:papers'),
     getJSON('hai:content'),
   ]);
-  // Compared by pathname, not URL, so a link saved under an older host still counts as in use.
-  const shown = JSON.stringify([memos, papers, content]);
+  // Compared by name, not URL, so a link saved under an older host still counts as in use.
+  const used = keysUsedIn(JSON.stringify([memos, papers, content]));
   const fresh = Date.now() - KEEP_RECENT_MS;
-  const orphans = blobs.filter((b) => !shown.includes(b.pathname) && new Date(b.uploadedAt).getTime() < fresh);
+  const orphans = blobs.filter((b) => !used.has(b.pathname) && new Date(b.uploadedAt).getTime() < fresh);
   const size = (rows) => rows.reduce((n, b) => n + b.size, 0);
   const file = (b) => ({ pathname: b.pathname, size: b.size, uploadedAt: b.uploadedAt });
 
-  // Links in posts whose file is gone (deleted from the Blob dashboard, say): reported, never
-  // "fixed" automatically, since only a person can tell what the post was meant to show.
+  // Links in posts whose file is gone: reported, never "fixed" automatically, since only a
+  // person can tell what the post was meant to show.
   const have = new Set(blobs.map((b) => b.pathname));
-  const missing = [...new Set([...shown.matchAll(/hai\/[\w.-]+/g)].map((m) => m[0]))].filter((p) => !have.has(p));
+  const missing = [...used].filter((p) => !have.has(p));
 
   // Same size and extension usually means the same file uploaded twice. Only ever reported:
   // telling them apart for real would mean downloading both, which costs transfer.
@@ -114,6 +119,7 @@ async function findOrphans() {
     summary: {
       total: blobs.length,
       totalBytes: size(blobs),
+      referenced: used.size,
       unused: orphans.length,
       unusedBytes: size(orphans),
       files: orphans.map(file),
@@ -135,6 +141,14 @@ export default async function handler(req, res) {
       // Kept so the page can still say how full the store was the last time it could look.
       await setJSON(USAGE_KEY, { at: Date.now(), total: summary.total, totalBytes: summary.totalBytes });
       if (req.method === 'GET') return send(res, 200, summary);
+      // Every file in the store looking unused, while the posts point at none at all, is what a
+      // broken comparison looks like — not a store full of junk. Deleting on that reading would
+      // empty it, so stop instead.
+      if (summary.total && !summary.referenced && summary.unused === summary.total) {
+        return send(res, 409, {
+          error: '글이 쓰고 있는 파일을 하나도 찾지 못했습니다. 잘못 지울 수 있어 멈췄습니다.',
+        });
+      }
       for (const b of orphans) await deleteMedia(b.pathname);
       return send(res, 200, { ...summary, deleted: orphans.length });
     } catch (err) {

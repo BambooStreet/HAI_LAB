@@ -141,6 +141,19 @@ try {
     tree.includes('tree-star') && (tree.match(/tree-light/g) ?? []).length >= 10);
   check('전구마다 깜빡이는 시점이 다름', new Set(tree.match(/--d:[\d.]+s/g)).size >= 10);
 
+  console.log('\n파일 대조');
+  // The store calls a file hai/x.jpg; a link in a post spells the same thing hai%2Fx.jpg.
+  // Reading only one of the two once made every file look unused, which is a deletion away
+  // from an empty store.
+  const { keysUsedIn } = await import(
+    pathToFileURL(fileURLToPath(new URL('../api/upload.js', import.meta.url))).href);
+  const oracle = 'https://objectstorage.ap-tokyo-1.oraclecloud.com/n/ns/b/bk/o/hai%2F111-a.jpg';
+  check('주소에 인코딩된 파일을 알아봄', keysUsedIn(oracle).has('hai/111-a.jpg'));
+  check('슬래시 그대로인 옛 주소도 알아봄', keysUsedIn('x/hai/222-b.png y').has('hai/222-b.png'));
+  check('같은 파일은 철자가 달라도 하나로 셈',
+    keysUsedIn('hai%2F333-c.webp ... hai/333-c.webp').size === 1);
+  check('쓰이지 않는 파일은 포함하지 않음', !keysUsedIn(oracle).has('hai/999-zz.jpg'));
+
   console.log('\n사진·동영상 올리기');
   // Locally there is no cloud storage, so files land in a temp folder and are served back from it.
   const raw = (extra) => ({ 'Content-Type': 'application/octet-stream', 'x-admin-password': PASSWORD, ...extra });
