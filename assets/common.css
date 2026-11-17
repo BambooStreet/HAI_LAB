@@ -50,6 +50,10 @@ nav {
   .nav-links { gap: 12px; font-size: 0.85rem; }
 }
 
+/* Snowfall. Above the sticky bar and the toasts, under <dialog>, and never in the way of a
+   click. prefers-reduced-motion is honoured in snow.js, which then adds nothing at all. */
+.snow { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+
 [hidden] { display: none !important; }
 
 .body-img { display: block; max-width: 100%; max-height: 70vh; margin: 8px 0; border-radius: 12px; border: 1px solid var(--line); }

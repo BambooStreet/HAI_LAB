@@ -108,6 +108,32 @@ try {
   check('다른 브라우저에는 눌린 표시가 없음', seen.likes === 1 && seen.liked === false);
   check('댓글 3개가 글에 붙어 있음', seen.comments.length === 3);
 
+  console.log('\n눈');
+  // The movement is plain arithmetic on purpose, so it can be checked without a browser.
+  const { flakeCount, makeFlake, stepFlakes } = await import(
+    pathToFileURL(fileURLToPath(new URL('../assets/snow.js', import.meta.url))).href);
+  check('화면이 넓을수록 눈송이가 많아짐', flakeCount(1440, 900) > flakeCount(390, 780));
+  check('눈송이 수에 상한이 있음', flakeCount(6000, 4000) === 220);
+
+  const snow = Array.from({ length: 60 }, () => makeFlake(800, 600));
+  const before = snow.map((f) => f.y);
+  stepFlakes(snow, 0.5, 800, 600);
+  check('눈이 아래로 내림', snow.every((f, i) => f.y > before[i] || f.y < 0));
+
+  const lander = { ...makeFlake(800, 600), x: 400, y: 599, r: 2, fall: 100, drift: 0, sway: 0, swaySpeed: 0 };
+  stepFlakes([lander], 0.5, 800, 600);
+  check('바닥에 닿은 눈은 위에서 다시 시작', lander.y < 0);
+
+  const strayLeft = { ...makeFlake(800, 600), x: -50, y: 300, r: 2, fall: 0, drift: 0, sway: 0, swaySpeed: 0 };
+  const strayRight = { ...strayLeft, x: 860 };
+  stepFlakes([strayLeft, strayRight], 0.1, 800, 600);
+  check('옆으로 벗어난 눈은 반대편에서 들어옴', strayLeft.x > 700 && strayRight.x < 100,
+    `${strayLeft.x} / ${strayRight.x}`);
+
+  const far = Array.from({ length: 40 }, () => makeFlake(800, 600));
+  stepFlakes(far, 0.05, 800, 600);
+  check('눈송이가 화면 안에 머무름', far.every((f) => f.x >= -f.r - 1 && f.x <= 800 + f.r + 1));
+
   console.log('\n사진·동영상 올리기');
   // Locally there is no cloud storage, so files land in a temp folder and are served back from it.
   const raw = (extra) => ({ 'Content-Type': 'application/octet-stream', 'x-admin-password': PASSWORD, ...extra });

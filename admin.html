@@ -586,6 +586,9 @@
 
   <script type="module">
     import { esc, renderBody, safeUrl, VIDEO_RE } from '/assets/common.js';
+    import { startSnow } from '/assets/snow.js';
+
+    startSnow();
 
     const $ = (id) => document.getElementById(id);
     const PW_KEY = 'hai-admin-pw';
