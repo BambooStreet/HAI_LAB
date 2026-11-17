@@ -68,3 +68,8 @@ nav {
 [hidden] { display: none !important; }
 
 .body-img { display: block; max-width: 100%; max-height: 70vh; margin: 8px 0; border-radius: 12px; border: 1px solid var(--line); }
+
+/* The site's own pointer. Only the plain cursor is replaced: buttons, links and text fields
+   keep theirs, because losing "this can be clicked" costs more than the picture is worth.
+   A browser that will not take the image (or cannot find it) falls back to the normal one. */
+body { cursor: url("/assets/img/cursor-rod.png") 14 0, auto; }

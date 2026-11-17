@@ -144,7 +144,7 @@ try {
   // A mistyped asset path shows up as nothing on the page and nothing in the console, so check
   // every /assets/… the pages ask for is really there.
   const root = fileURLToPath(new URL('..', import.meta.url));
-  for (const page of ['index.html', 'admin.html']) {
+  for (const page of ['index.html', 'admin.html', 'assets/common.css']) {
     const html = await readFile(join(root, page), 'utf8');
     const asked = [...new Set([...html.matchAll(/["'(](\/assets\/[\w.-]+)/g)].map((m) => m[1]))];
     const gone = [];
