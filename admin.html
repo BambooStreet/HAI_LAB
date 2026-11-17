@@ -203,15 +203,18 @@
     /* Deliberately not a matching pair: one sits low and large, the other higher up and
        smaller. Put them at the same height and size and they read as a border decoration
        rather than as two of them happening to look in. */
-    .page-peek.left { left: 0; bottom: 14px; height: 116px; }  /* drawn cut off at its right */
-    .page-peek.right { right: 0; bottom: 44%; height: 96px; }  /* drawn cut off at its left */
+    /* Sized against the window instead of switched at one breakpoint. Between a phone and a
+       wide desktop there is a long stretch — tablets, small laptops — where the content still
+       fills the width, and a fixed size either sits on the text there or gets lost in the
+       margin on a big monitor. These stay small until there is room beside the content. */
+    .page-peek.left { left: 0; bottom: 12px; height: clamp(70px, 7.5vw, 118px); }  /* cut off at its right */
+    .page-peek.right { right: 0; bottom: 46%; height: clamp(60px, 6.2vw, 98px); }  /* cut off at its left */
     /* This one is drawn standing, toes on the bottom edge, so it is not flipped and it sits
        flat on the floor of the window rather than leaning in from the side. */
-    .page-peek.corner { right: 8px; bottom: 0; height: 84px; transform: none; }
-    @media (max-width: 640px) {
-      .page-peek.left { height: 80px; bottom: 8px; }
-      .page-peek.right { height: 72px; bottom: 50%; }
-      .page-peek.corner { height: 62px; right: 2px; }
+    .page-peek.corner { right: 6px; bottom: 0; height: clamp(54px, 5.5vw, 86px); transform: none; }
+    /* A phone on its side has almost no height to spare; width alone would keep them tall. */
+    @media (max-height: 540px) {
+      .page-peek.left, .page-peek.right, .page-peek.corner { height: 54px; }
     }
     .memo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .memo-info { min-width: 0; }
