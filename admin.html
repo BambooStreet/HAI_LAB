@@ -991,12 +991,14 @@
 
     function renderStorage(s, cleaned = false) {
       // Over the plan's limits the store answers 403 to everything, reads included.
-      if (s.blocked) {
+      // The old store used to lock itself when a monthly transfer cap was passed; this one does
+      // not. Here a refusal means the keys, so point at those instead of telling someone to wait.
+      if (s.unreachable) {
         const seen = s.lastSeen;
         $('storage-clean').hidden = true;
         $('storage-usage').innerHTML = `
-          <p class="memo-status err">🔒 저장소가 잠겨 있어 용량을 읽을 수 없습니다.</p>
-          <p class="memo-status">사진·동영상이 보이지 않을 뿐, 파일은 지워지지 않았습니다. 요금제 한도가 초기화되면 그대로 다시 보입니다.</p>
+          <p class="memo-status err">🔑 저장소가 응답하지 않아 용량을 읽을 수 없습니다.</p>
+          <p class="memo-status">파일은 지워지지 않았습니다. 대개 열쇠 문제예요 — Vercel 환경변수의 <b>OCI_ACCESS_KEY_ID</b>와 <b>OCI_SECRET_ACCESS_KEY</b>가 한 쌍이 맞는지 확인하고 다시 배포해 주세요.</p>
           ${seen ? `<p class="memo-status">마지막으로 확인한 용량: ${mb(seen.totalBytes)} · 파일 ${seen.total}개 (${timeOf(seen.at)})</p>` : ''}`;
         $('storage-result').innerHTML = `
           <p class="memo-status">지금 글들이 쓰고 있는 파일: <b>${s.referenced}개</b>${s.videos ? ` (그중 동영상 ${s.videos}개)` : ''}</p>

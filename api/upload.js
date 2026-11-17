@@ -70,7 +70,8 @@ async function readBuffer(req) {
 // Files no post shows any more. Anything uploaded in the last hour is kept, so a photo that is
 // still sitting in an unsaved post is never swept away.
 const KEEP_RECENT_MS = 60 * 60 * 1000;
-const USAGE_KEY = 'hai:blob-usage'; // last reading, so a blocked store can still show something
+const USAGE_KEY = 'hai:blob-usage'; // last reading, kept so an unreachable store still shows something
+                                    // (named from the store this project used to be on)
 
 // The store names a file hai/<name>, but a link inside a post carries it through the URL's
 // path, where the slash is written %2F. Both spellings mean the same file, so every comparison
@@ -152,10 +153,10 @@ export default async function handler(req, res) {
       for (const b of orphans) await deleteMedia(b.pathname);
       return send(res, 200, { ...summary, deleted: orphans.length });
     } catch (err) {
-      // Over the plan's limits the whole store answers 403, reads included. Say so plainly and
+      // The store refusing to answer is nearly always the keys, not the files. Say that, and
       // show what can still be worked out from the posts themselves.
-      if (/blocked|403|forbidden|limit/i.test(err.message)) {
-        return send(res, 200, { blocked: true, reason: err.message, ...(await referencedFiles()) });
+      if (/403|forbidden|denied|authenticat|credential|signature/i.test(err.message)) {
+        return send(res, 200, { unreachable: true, reason: err.message, ...(await referencedFiles()) });
       }
       console.error(err);
       return send(res, 500, { error: `저장소를 정리하지 못했습니다: ${err.message}` });
