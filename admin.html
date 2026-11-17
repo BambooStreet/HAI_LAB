@@ -684,22 +684,43 @@
 
     // ---------- image upload ----------
     // Resize in the browser first (phone photos are huge), then POST the raw bytes to /api/upload.
+    // Two ways in, because they are not the same decoder. A photo createImageBitmap refuses —
+    // an unusual colour profile, an EXIF quirk, whatever the phone's camera wrote — often still
+    // loads as an <img>. Trying only the first turned those into "열지 못했어요" for no good
+    // reason. The size and type go in the message so a photo that beats both can be identified.
+    async function decodeImage(file) {
+      try {
+        const bitmap = await createImageBitmap(file);
+        return { img: bitmap, w: bitmap.width, h: bitmap.height, release: () => bitmap.close?.() };
+      } catch {}
+      const url = URL.createObjectURL(file);
+      try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        return { img, w: img.naturalWidth, h: img.naturalHeight, release: () => URL.revokeObjectURL(url) };
+      } catch {
+        URL.revokeObjectURL(url);
+        const kb = Math.round(file.size / 1024);
+        throw new Error(`${file.name || '사진'} 을(를) 열지 못했어요 (${kb}KB, ${file.type || '형식 모름'}). 다른 사진으로 해보시겠어요?`);
+      }
+    }
+
     async function resizeImage(file, max = 1600) {
       if (file.type === 'image/gif') return file; // keep animation
-      let bitmap;
+      const src = await decodeImage(file);
       try {
-        bitmap = await createImageBitmap(file);
-      } catch {
-        throw new Error(`${file.name || '사진'} 을(를) 열지 못했어요. 갤러리에서 다시 골라주세요.`);
+        const scale = Math.min(1, max / Math.max(src.w, src.h));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(src.w * scale);
+        canvas.height = Math.round(src.h * scale);
+        canvas.getContext('2d').drawImage(src.img, 0, 0, canvas.width, canvas.height);
+        const encode = (type) => new Promise((r) => canvas.toBlob(r, type, 0.85));
+        const webp = await encode('image/webp');
+        return webp?.type === 'image/webp' ? webp : encode('image/jpeg');
+      } finally {
+        src.release();
       }
-      const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(bitmap.width * scale);
-      canvas.height = Math.round(bitmap.height * scale);
-      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const encode = (type) => new Promise((r) => canvas.toBlob(r, type, 0.85));
-      const webp = await encode('image/webp');
-      return webp?.type === 'image/webp' ? webp : encode('image/jpeg');
     }
 
     async function uploadImage(file) {
@@ -836,6 +857,12 @@
       }
       if (!bytes.byteLength) {
         throw new Error(`${name} 이(가) 비어 있어요. 클라우드에만 있는 사진이면 기기에 먼저 내려받아 주세요.`);
+      }
+      // A short read is its own failure: the bytes that did arrive cannot make a whole picture,
+      // and without this it surfaces later as "열지 못했어요", which points at the wrong thing.
+      if (file.size && bytes.byteLength < file.size) {
+        const part = `${Math.round(bytes.byteLength / 1024)}KB / ${Math.round(file.size / 1024)}KB`;
+        throw new Error(`${name} 을(를) 끝까지 읽지 못했어요 (${part}). 갤러리에서 다시 골라주세요.`);
       }
       return new File([bytes], name, { type: file.type });
     }
