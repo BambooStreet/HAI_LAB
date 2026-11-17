@@ -799,7 +799,22 @@
       });
     }
 
-    const mediaFiles = (list) => [...(list || [])].filter((f) => f.type.startsWith('image/') || isVideo(f));
+    // video/* lets the picker offer formats the store will not take, so say which pick was
+    // dropped and why instead of letting it vanish between the gallery and the page.
+    function mediaFiles(list) {
+      const all = [...(list || [])];
+      const kept = all.filter((f) => f.type.startsWith('image/') || isVideo(f));
+      const dropped = all.filter((f) => !kept.includes(f));
+      if (dropped.length) {
+        // One message naming them all: a toast replaces the one before it, so a message per
+        // file would leave only the last one on screen.
+        const names = dropped.map((f) => f.name || '이름 없는 파일').join(', ');
+        toast(dropped.every((f) => f.type.startsWith('video/'))
+          ? `${names} — 올릴 수 없는 형식이에요. MP4, WebM, MOV만 됩니다.`
+          : `${names} — 사진이나 동영상만 올릴 수 있어요.`, true);
+      }
+      return kept;
+    }
 
     // A file from a phone's album is a reference to a photo, not the photo itself, and that
     // reference can go stale while an earlier upload is still running — the later reads then come
@@ -1428,10 +1443,10 @@
           insertMedia(files);
         },
         async addVideo() {
-          const [file] = await pickFiles('video/mp4,video/webm,video/quicktime');
+          const [file] = await pickFiles('video/*'); // wildcard, so a phone opens its gallery
           if (!file) return;
           restoreCaret();
-          insertMedia([file]);
+          insertMedia(mediaFiles([file]));
         },
         bold() {
           el.focus();
@@ -1631,7 +1646,10 @@
       }
     }
 
-    const pickMemoFiles = async () => addMemoFiles(await pickFiles('image/*,video/mp4,video/webm,video/quicktime', true));
+    // Wildcards only. A phone shown a list with exact types (video/mp4 and friends) opens its
+    // general file browser instead of the gallery, and what comes back from there is often a
+    // cloud-only item whose bytes never arrive. image/* and video/* get the gallery.
+    const pickMemoFiles = async () => addMemoFiles(await pickFiles('image/*,video/*', true));
 
     function dropPreview(item) {
       if (!item?.preview) return;
