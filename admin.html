@@ -199,23 +199,6 @@
        of them leaning in from just outside the window. Below the save bar so that bar always
        wins, and never in the way of a click. Sized by height because the two are drawn at
        different proportions. */
-    .page-peek { position: fixed; width: auto; pointer-events: none; z-index: 4; transform: scaleX(-1); }
-    /* Deliberately not a matching pair: one sits low and large, the other higher up and
-       smaller. Put them at the same height and size and they read as a border decoration
-       rather than as two of them happening to look in. */
-    /* Sized against the window instead of switched at one breakpoint. Between a phone and a
-       wide desktop there is a long stretch — tablets, small laptops — where the content still
-       fills the width, and a fixed size either sits on the text there or gets lost in the
-       margin on a big monitor. These stay small until there is room beside the content. */
-    .page-peek.left { left: 0; bottom: 12px; height: clamp(70px, 7.5vw, 118px); }  /* cut off at its right */
-    .page-peek.right { right: 0; bottom: 46%; height: clamp(60px, 6.2vw, 98px); }  /* cut off at its left */
-    /* This one is drawn standing, toes on the bottom edge, so it is not flipped and it sits
-       flat on the floor of the window rather than leaning in from the side. */
-    .page-peek.corner { right: 6px; bottom: 0; height: clamp(54px, 5.5vw, 86px); transform: none; }
-    /* A phone on its side has almost no height to spare; width alone would keep them tall. */
-    @media (max-height: 540px) {
-      .page-peek.left, .page-peek.right, .page-peek.corner { height: 54px; }
-    }
     .memo-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .memo-info { min-width: 0; }
     .memo-head h4 { font-size: 1rem; font-weight: 700; margin-bottom: 2px; overflow-wrap: anywhere; }

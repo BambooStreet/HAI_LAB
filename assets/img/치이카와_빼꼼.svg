@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="245 155 365 500" width="365" height="500" fill="none" overflow="hidden" role="img" aria-labelledby="character-title">
+<title id="character-title">왼쪽 가장자리에서 웃으며 빼꼼 내다보는 하얀 캐릭터</title>
+<defs><clipPath id="frame"><path d="M245 155H610V655H245Z"/></clipPath></defs>
+<g clip-path="url(#frame)">
+<g transform="rotate(22 380 400)" stroke="#080807" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
+<!-- The white body extends beyond the image edge. -->
+<path fill="#fff" stroke="none" d="M100 290 Q180 265 255 244 C237 222 254 192 278 195 Q304 194 299 222 Q346 201 384 205 L436 211 Q440 184 465 181 Q486 179 495 196 Q500 206 490 224 L505 250 Q553 268 574 319 Q601 388 567 447 Q554 466 542 471 Q539 546 494 580 Q464 608 411 613 Q278 656 100 630Z"/>
+<path d="M100 290 Q180 265 255 244 C237 222 254 192 278 195 Q304 194 299 222 Q346 201 384 205 L436 211 Q440 184 465 181 Q486 179 495 196 Q500 206 490 224 M505 250 Q553 268 574 319 Q601 388 567 447 Q554 466 542 471 M534 512 Q526 558 494 580 Q464 608 411 613 Q278 656 100 630"/>
+<!-- Blush -->
+<path stroke="none" fill="#f4bdca" d="M238 386 C248 369 271 364 292 374 C312 382 313 401 299 415 C286 430 261 432 245 418 Q229 404 238 386Z M458 372 C465 354 490 348 508 357 C528 367 531 386 519 400 C503 415 478 414 464 402 Q451 391 458 372Z"/>
+<g stroke-width="9"><path d="M250 390 L246 402 M270 391 L266 403 M290 387 L285 400 M478 370 L473 383 M496 371 L492 385 M514 372 L512 385"/></g>
+<!-- Relaxed eyebrows and closed smiling eyes -->
+<path stroke-width="10" d="M303 306 Q313 297 322 298 M420 290 Q431 286 441 291 M299 364 Q315 352 333 354 M423 346 Q442 340 459 348"/>
+<!-- Open happy mouth -->
+<path stroke-width="9" d="M356 394 Q367 406 378 393 Q384 382 389 393 Q396 406 406 394"/>
+<path fill="#fff" stroke-width="8" d="M367 402 Q371 429 384 430 Q398 430 401 402 Q383 396 367 402Z"/>
+<path stroke-width="8" d="M378 447 Q385 450 392 447"/>
+</g>
+<!-- A small front paw peeks over the left canvas edge. -->
+<path fill="#fff" stroke="#080807" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" d="M232 490 Q252 482 267 490 Q282 500 271 513 Q286 522 273 536 Q256 545 232 537"/>
+</g>
+</svg>
