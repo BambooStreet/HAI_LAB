@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node dev-server.js",
     "dev:live": "node --env-file=.env.local dev-server.js",
-    "test": "node test/smoke.mjs"
+    "test": "node test/smoke.mjs",
+    "check:storage": "node --env-file=.env.local scripts/check-storage.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
