@@ -68,9 +68,12 @@ nav {
 /* This one is drawn standing, toes on the bottom edge, so it is not flipped and it sits
    flat on the floor of the window rather than leaning in from the side. */
 .page-peek.corner { right: 6px; bottom: 0; height: clamp(54px, 5.5vw, 86px); transform: none; }
+/* Drawn cut off at its left already, so this one is not flipped: the cut meets the screen edge
+   as it is. Sits higher than the one opposite, to keep the four from lining up in pairs. */
+.page-peek.mid-left { left: 0; bottom: 62%; height: clamp(58px, 6vw, 94px); transform: none; }
 /* A phone on its side has almost no height to spare; width alone would keep them tall. */
 @media (max-height: 540px) {
-  .page-peek.left, .page-peek.right, .page-peek.corner { height: 54px; }
+  .page-peek.left, .page-peek.right, .page-peek.corner, .page-peek.mid-left { height: 54px; }
 }
 
 /* Christmas tree. Each page places and sizes its own; this is only how it looks. */
