@@ -6,7 +6,7 @@ import { send, isAdmin, readBody } from './_lib/http.js';
 import { getJSON, setJSON } from './_lib/store.js';
 import { listMemos } from './_lib/memos.js';
 import {
-  hasMedia, putMedia, deleteMedia, listMedia, keyFromUrl, PREFIX, PART_SIZE,
+  hasMedia, putMedia, deleteMedia, listMedia, listUnfinished, keyFromUrl, PREFIX, PART_SIZE,
   startUpload, uploadPart, finishUpload, abortUpload,
 } from './_lib/media.js';
 
@@ -88,8 +88,9 @@ async function referencedFiles() {
 }
 
 async function findOrphans() {
-  const [blobs, memos, papers, content] = await Promise.all([
+  const [blobs, unfinished, memos, papers, content] = await Promise.all([
     listMedia(),
+    listUnfinished(),
     listMemos(),
     getJSON('hai:papers'),
     getJSON('hai:content'),
@@ -115,8 +116,14 @@ async function findOrphans() {
   }
   const maybeDuplicates = [...groups.values()].filter((g) => g.length > 1).map((g) => g.map(file));
 
+  // A video left half way — the composer closed, the phone lost signal — leaves its pieces
+  // behind. They take up room without appearing in the list above, so they are counted here
+  // and cleared with everything else. Recent ones are left alone: one may still be uploading.
+  const stale = unfinished.filter((u) => new Date(u.at).getTime() < fresh);
+
   return {
     orphans,
+    stale,
     summary: {
       total: blobs.length,
       totalBytes: size(blobs),
@@ -124,6 +131,7 @@ async function findOrphans() {
       unused: orphans.length,
       unusedBytes: size(orphans),
       files: orphans.map(file),
+      unfinished: stale.length,
       missing,
       maybeDuplicates,
     },
@@ -138,7 +146,7 @@ export default async function handler(req, res) {
     if (!isAdmin(req)) return send(res, 401, { error: '비밀번호가 올바르지 않습니다.' });
     if (!hasMedia) return send(res, 503, { error: '저장소가 연결되지 않았습니다.' });
     try {
-      const { orphans, summary } = await findOrphans();
+      const { orphans, stale, summary } = await findOrphans();
       // Kept so the page can still say how full the store was the last time it could look.
       await setJSON(USAGE_KEY, { at: Date.now(), total: summary.total, totalBytes: summary.totalBytes });
       if (req.method === 'GET') return send(res, 200, summary);
@@ -151,7 +159,8 @@ export default async function handler(req, res) {
         });
       }
       for (const b of orphans) await deleteMedia(b.pathname);
-      return send(res, 200, { ...summary, deleted: orphans.length });
+      for (const u of stale) await abortUpload(u.key, u.uploadId);
+      return send(res, 200, { ...summary, deleted: orphans.length, abandoned: stale.length });
     } catch (err) {
       // The store refusing to answer is nearly always the keys, not the files. Say that, and
       // show what can still be worked out from the posts themselves.

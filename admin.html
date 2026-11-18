@@ -775,8 +775,9 @@
       }
     }
 
-    async function uploadVideo(file, onProgress) {
+    async function uploadVideo(file, onProgress, onOpen) {
       const started = await request('/api/upload?video=start', 'POST', { type: file.type, size: file.size });
+      if (started.key) onOpen?.({ key: started.key, uploadId: started.uploadId });
 
       // Local dev has no store credentials, so the file goes to a temp folder in one go.
       if (started.uploadUrl) {
@@ -1069,12 +1070,18 @@
             : used >= 70 ? ' — 여유가 줄고 있어요.' : ''}
         </p>`;
 
-      $('storage-clean').hidden = cleaned || !s.unused;
+      $('storage-clean').hidden = cleaned || !(s.unused || s.unfinished);
       $('storage-result').innerHTML = `
         <p class="memo-status${s.unused && !cleaned ? ' err' : ''}">
           ${cleaned ? `${s.deleted}개를 지웠어요 (${mb(s.unusedBytes)} 확보).`
             : s.unused ? `어느 글에서도 쓰지 않는 파일 ${s.unused}개 · ${mb(s.unusedBytes)}` : '안 쓰는 파일이 없어요.'}
         </p>
+        ${/* Half-finished videos take up room without appearing in the list of files, so they
+              would never show up anywhere else. */ ''}
+        ${s.unfinished ? `<p class="memo-status${cleaned ? '' : ' err'}">
+          ${cleaned ? `올리다 만 동영상 ${s.abandoned ?? s.unfinished}건도 치웠어요.`
+            : `올리다 만 동영상 ${s.unfinished}건 — 자리만 차지하고 파일 목록에는 안 보입니다. 같이 치울 수 있어요.`}
+        </p>` : ''}
         ${s.unused && !cleaned ? fileRows(s.files) : ''}
         ${s.missing?.length ? `<p class="memo-status err">⚠️ 글에는 있는데 파일이 없는 것 ${s.missing.length}개 — 글을 고치거나 다시 올려주세요.</p>${fileRows(s.missing)}` : ''}
         ${s.maybeDuplicates?.length ? `<p class="memo-status">같은 파일일 수 있는 묶음 ${s.maybeDuplicates.length}개 (크기·형식이 같음). 확인 후 필요 없는 쪽만 글에서 빼주세요.</p>
@@ -1583,6 +1590,25 @@
     // The form mirrors the card: photos and videos in a strip, then the caption underneath.
     // Saved as the same body text as before — media lines first, caption last.
     const memoCaption = $('memo-caption');
+    // Closing the composer does not call back the uploads already on their way. Each one
+    // remembers which composer it belongs to, and anything that lands after that composer is
+    // gone gets cleared away — otherwise cancelling mid-upload leaves the file in the store
+    // with no post pointing at it. A video is worse: its pieces hold space without ever
+    // appearing in a listing, so the half-done upload is called off rather than deleted.
+    let memoSession = 0;
+    const openVideos = new Map(); // item -> { key, uploadId }, for the ones still going
+
+    const callOffVideo = ({ key, uploadId }) =>
+      request('/api/upload?video=abort', 'POST', { key, uploadId }).catch(() => {});
+
+    function abandonUploads() {
+      memoSession += 1;
+      for (const open of openVideos.values()) callOffVideo(open);
+      openVideos.clear();
+    }
+
+    const discard = (url) => url && request(`/api/upload?url=${encodeURIComponent(url)}`, 'DELETE').catch(() => {});
+
     let memoMedia = []; // { url, caption, video, uploading, progress, preview }
     let memoUploads = 0;
     let memoAt = 0; // which photo the composer is showing
@@ -1665,12 +1691,19 @@
 
       for (const [i, file] of files.entries()) {
         const item = items[i];
+        const mine = memoSession;
         try {
-          item.url = item.video
-            ? await uploadVideo(file, (done) => { item.progress = done; renderMemoMedia(); })
+          const url = item.video
+            ? await uploadVideo(file, (done) => { item.progress = done; renderMemoMedia(); },
+                (open) => { if (memoSession === mine) openVideos.set(item, open); else callOffVideo(open); })
             : await uploadImage(file);
+          openVideos.delete(item);
+          if (mine !== memoSession) { discard(url); continue; } // 작성창이 이미 닫혔다
+          item.url = url;
           item.uploading = false;
         } catch (err) {
+          openVideos.delete(item);
+          if (mine !== memoSession) continue;
           dropPreview(item);
           memoMedia = memoMedia.filter((x) => x !== item);
           toast(err.message, true);
@@ -2121,6 +2154,7 @@
       $('memo-form-title').textContent = m ? '메모 수정' : '새 메모';
       memoForm.title.value = m?.title ?? '';
       const body = m?.body ?? '';
+      memoSession += 1; // anything still uploading for the last composer no longer belongs here
       memoMedia = mediaItems(body).map(({ url, caption }) => ({ url, caption, video: VIDEO_RE.test(url) }));
       memoAt = 0;
       memoCaption.value = captionOf(body);
@@ -2131,6 +2165,7 @@
     }
 
     function closeMemoForm() {
+      if (memoUploads) abandonUploads();
       for (const item of memoMedia) dropPreview(item);
       memoEditing = null;
       if (memoDialog.open) memoDialog.close();

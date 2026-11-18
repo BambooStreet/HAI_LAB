@@ -4,6 +4,7 @@
 import {
   S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command,
   CreateMultipartUploadCommand, UploadPartCommand, CompleteMultipartUploadCommand, AbortMultipartUploadCommand,
+  ListMultipartUploadsCommand,
 } from '@aws-sdk/client-s3';
 
 const { OCI_REGION, OCI_NAMESPACE, OCI_BUCKET, OCI_ACCESS_KEY_ID, OCI_SECRET_ACCESS_KEY } = process.env;
@@ -73,6 +74,13 @@ export async function finishUpload(key, uploadId, parts) {
 
 export async function abortUpload(key, uploadId) {
   await s3().send(new AbortMultipartUploadCommand({ Bucket: OCI_BUCKET, Key: key, UploadId: uploadId }));
+}
+
+// A video whose pieces were started but never joined leaves those pieces in the bucket taking
+// up room, and they do not show in a listing of files — so nothing else here can find them.
+export async function listUnfinished() {
+  const r = await s3().send(new ListMultipartUploadsCommand({ Bucket: OCI_BUCKET, Prefix: PREFIX }));
+  return (r.Uploads ?? []).map((u) => ({ key: u.Key, uploadId: u.UploadId, at: u.Initiated }));
 }
 
 export async function deleteMedia(key) {
