@@ -65,7 +65,17 @@ nav {
 }
 
 /* The characters looking in from the edges. Both pages use them, so they live here. */
-.page-peek { position: fixed; width: auto; pointer-events: none; z-index: 4; transform: scaleX(-1); }
+.page-peek {
+  position: fixed; width: auto; pointer-events: none; z-index: 4; transform: scaleX(-1);
+  height: var(--peek-h); transition: height .22s ease-out;
+}
+/* Leaning in a little further when the cursor comes near. They can't be hovered — nothing
+   reaches them through pointer-events: none, which is what keeps them out of the way of the
+   page — so common.js measures the cursor against their boxes and sets this. Growing by
+   height, not by transform: two of them are flipped, and a scale would have to share an
+   origin with that flip and send them off the edge. Each is pinned at the edge it leans in
+   from, so the extra height grows into the window. */
+.page-peek.near { height: calc(var(--peek-h) * 1.08); }
 /* Deliberately not a matching pair: one sits low and large, the other higher up and
    smaller. Put them at the same height and size and they read as a border decoration
    rather than as two of them happening to look in. */
@@ -73,22 +83,22 @@ nav {
    wide desktop there is a long stretch — tablets, small laptops — where the content still
    fills the width, and a fixed size either sits on the text there or gets lost in the
    margin on a big monitor. These stay small until there is room beside the content. */
-.page-peek.left { left: 0; bottom: 12px; height: var(--peek-hachiware); }  /* cut off at its right */
-.page-peek.right { right: 0; bottom: 46%; height: var(--peek-usagi); }  /* cut off at its left */
+.page-peek.left { left: 0; bottom: 12px; --peek-h: var(--peek-hachiware); }  /* cut off at its right */
+.page-peek.right { right: 0; bottom: 46%; --peek-h: var(--peek-usagi); }  /* cut off at its left */
 /* This one is drawn standing, toes on the bottom edge, so it is not flipped and it sits
    flat on the floor of the window rather than leaning in from the side. */
-.page-peek.corner { right: 6px; bottom: 0; height: var(--peek-kurimanju); transform: none; }
+.page-peek.corner { right: 6px; bottom: 0; --peek-h: var(--peek-kurimanju); transform: none; }
 /* Drawn cut off at its left already, so this one is not flipped: the cut meets the screen edge
    as it is. It stands on the one below rather than floating on its own, so its offset is that
    one's height plus a gap — the two then stay stacked at every window size. */
-.page-peek.mid-left { left: 0; bottom: calc(var(--peek-hachiware) + 20px); height: var(--peek-chiikawa); transform: none; }
+.page-peek.mid-left { left: 0; bottom: calc(var(--peek-hachiware) + 20px); --peek-h: var(--peek-chiikawa); transform: none; }
 /* Beside the one in the corner, far enough left to clear it. That one is about a third wider
    than it is tall, which is where the 1.34 comes from. */
-.page-peek.beside { right: calc(var(--peek-kurimanju) * 1.34 + 18px); bottom: 0; height: var(--peek-rakko); transform: none; }
+.page-peek.beside { right: calc(var(--peek-kurimanju) * 1.34 + 18px); bottom: 0; --peek-h: var(--peek-rakko); transform: none; }
 /* A phone on its side has almost no height to spare; width alone would keep them tall. */
 @media (max-height: 540px) {
   .page-peek.left, .page-peek.right, .page-peek.corner,
-  .page-peek.mid-left, .page-peek.beside { height: 50px; }
+  .page-peek.mid-left, .page-peek.beside { --peek-h: 50px; }
 }
 
 /* Christmas tree. Each page places and sizes its own; this is only how it looks. */

@@ -618,11 +618,12 @@
   <img class="page-peek beside" src="/assets/img/peek-rakko.svg" alt="" aria-hidden="true" />
 
   <script type="module">
-    import { esc, renderBody, safeUrl, VIDEO_RE } from '/assets/common.js';
+    import { esc, renderBody, safeUrl, VIDEO_RE, wakePeeks } from '/assets/common.js';
     import { startSnow } from '/assets/snow.js';
     import { plantTree } from '/assets/tree.js';
 
     startSnow();
+    wakePeeks();
     plantTree(document.querySelector('.nav-inner .logo'), '', 'afterend');
 
     const $ = (id) => document.getElementById(id);

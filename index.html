@@ -234,11 +234,12 @@
   <img class="page-peek beside" src="/assets/img/peek-rakko.svg" alt="" aria-hidden="true" />
 
   <script type="module">
-    import { esc, rich, safeUrl, renderBody, firstImage } from '/assets/common.js';
+    import { esc, rich, safeUrl, renderBody, firstImage, wakePeeks } from '/assets/common.js';
     import { startSnow } from '/assets/snow.js';
     import { plantTree } from '/assets/tree.js';
 
     startSnow();
+    wakePeeks();
     plantTree(document.querySelector('.hero'));
 
     const $ = (id) => document.getElementById(id);

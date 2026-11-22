@@ -74,3 +74,40 @@ export function firstImage(text) {
   }
   return '';
 }
+
+// The characters at the edges lean in a little when the cursor comes near one. Nothing can
+// hover them — they are pointer-events: none so they never swallow a click meant for the page —
+// so the cursor is measured against their boxes instead. Mouse only: on a phone there is no
+// cursor to follow, and a tap would make one twitch for no reason.
+export function wakePeeks(margin = 28) {
+  const peeks = [...document.querySelectorAll('.page-peek')];
+  if (!peeks.length || matchMedia('(hover: none)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let at = null;
+  let queued = false;
+  const check = () => {
+    queued = false;
+    for (const el of peeks) {
+      const r = el.getBoundingClientRect();
+      const near = at !== null
+        && at.x >= r.left - margin && at.x <= r.right + margin
+        && at.y >= r.top - margin && at.y <= r.bottom + margin;
+      el.classList.toggle('near', near);
+    }
+  };
+
+  addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return;
+    at = { x: e.clientX, y: e.clientY };
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(check);
+    }
+  }, { passive: true });
+
+  // The cursor leaving the window stops sending moves, which would leave one stuck grown.
+  document.addEventListener('mouseleave', () => {
+    at = null;
+    check();
+  });
+}
