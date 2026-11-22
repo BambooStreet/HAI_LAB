@@ -360,8 +360,27 @@
       position: absolute; top: 8px; right: 10px; padding: 2px 9px; border-radius: 999px;
       background: rgba(0, 0, 0, .6); color: #fff; font-size: 0.75rem;
     }
-    .cm-dots { display: flex; justify-content: center; gap: 6px; padding: 8px 0 2px; }
-    .cm-dots .feed-dot { width: 7px; height: 7px; padding: 0; border: none; cursor: pointer; }
+    /* The strip under the big preview: every photo in the post, in the order they will be shown.
+       Tap one to bring it up, drag one to move it. touch-action:none so a drag on a phone moves
+       the photo instead of scrolling the strip; the strip scrolls itself while dragging near an
+       edge, and by wheel or scrollbar otherwise. */
+    .cm-thumbs { display: flex; gap: 6px; overflow-x: auto; padding: 8px 2px 2px; }
+    .cm-thumb {
+      position: relative; flex: none; width: 56px; height: 56px; padding: 0; overflow: hidden;
+      border: 2px solid transparent; border-radius: 10px; background: #000;
+      touch-action: none; cursor: grab;
+    }
+    .cm-thumb img, .cm-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+    .cm-thumb.on { border-color: var(--accent); }
+    .cm-thumb.lift { opacity: .5; cursor: grabbing; }
+    .cm-thumb.busy img, .cm-thumb.busy video { opacity: .35; }
+    .cm-thumb .n {
+      position: absolute; left: 3px; top: 3px; padding: 0 4px; border-radius: 5px;
+      background: rgba(0, 0, 0, .6); color: #fff; font-size: 0.65rem; line-height: 1.5;
+    }
+    .cm-tip { color: var(--muted); font-size: 0.75rem; margin: 2px 2px 0; }
+    .cm-tip b { color: var(--text); font-weight: 500; }
+    .cm-thumb .vid { position: absolute; right: 3px; bottom: 2px; color: #fff; font-size: 0.7rem; text-shadow: 0 1px 2px #000; }
     .cm-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .cm-bar .btn { padding: 6px 12px; font-size: 0.85rem; }
     .cm-bar .btn:last-child { margin-left: auto; }
@@ -469,7 +488,7 @@
           <label><span>제목 (선택)</span><input name="title" maxlength="200" /></label>
           <div class="media-field">
             <span class="field-label">사진 · 동영상</span>
-            <p class="hint" id="memo-media-hint">사진 위의 <b>‹ ›</b>, 아래 점, 또는 밀어서 넘기면서 사진마다 설명을 답니다. 맨 앞 사진이 피드에 먼저 보여요. 끌어다 놓기나 붙여넣기(Ctrl+V)로도 올릴 수 있습니다.</p>
+            <p class="hint" id="memo-media-hint">사진 위의 <b>‹ ›</b>, 아래 작은 사진, 또는 밀어서 넘기면서 사진마다 설명을 답니다. 작은 사진을 <b>끌면 순서</b>가 바뀌고, 맨 앞 사진이 피드에 먼저 보여요. 끌어다 놓기나 붙여넣기(Ctrl+V)로도 올릴 수 있습니다.</p>
             <div id="memo-media"></div>
           </div>
           <label class="caption-field"><span>설명</span><textarea id="memo-caption" rows="4" maxlength="50000"
@@ -1654,9 +1673,9 @@
               ${memoAt === 0 ? '<span class="cover">대표</span>' : ''}
               ${item.uploading ? `<span class="pct">${Math.round(item.progress * 100)}%</span>` : ''}
             </div>
-            ${memoMedia.length > 1
-              ? `<div class="cm-dots">${memoMedia.map((_, i) => `<button type="button" class="feed-dot${i === memoAt ? ' on' : ''}" data-go="${i}" aria-label="${i + 1}번째 사진"></button>`).join('')}</div>`
-              : ''}
+            ${memoMedia.length > 1 ? `
+              <div class="cm-thumbs" id="memo-thumbs">${thumbStrip()}</div>
+              <p class="cm-tip">드래그해서 순서를 바꿀 수 있습니다</p>` : ''}
             <div class="cm-bar">
               <button class="btn" type="button" data-add-media>＋ 사진 추가</button>
               <button class="btn danger" type="button" data-drop-media="${memoAt}">✕ 이 사진 빼기</button>
@@ -1672,6 +1691,20 @@
         box?.setSelectionRange(typing, typing);
       }
     }
+
+    const thumbStrip = () => memoMedia.map((item, i) => `
+      <button type="button" class="cm-thumb${i === memoAt ? ' on' : ''}${item.uploading ? ' busy' : ''}${i === dragAt ? ' lift' : ''}"
+              data-thumb="${i}" aria-label="${i + 1}번째 사진" title="눌러서 보기 · 끌어서 순서 바꾸기">
+        ${item.video
+          ? `<video src="${esc(item.url || item.preview)}" muted playsinline preload="metadata"></video><span class="vid">▶</span>`
+          : `<img src="${esc(item.url || item.preview)}" alt="" />`}
+        <span class="n">${i + 1}</span>
+      </button>`).join('');
+
+    const renderThumbs = () => {
+      const strip = $('memo-thumbs');
+      if (strip) strip.innerHTML = thumbStrip();
+    };
 
     // Uploaded one at a time so a big video's progress is easy to follow.
     async function addMemoFiles(list) {
@@ -1745,12 +1778,55 @@
         memoAt += Number(step.dataset.step);
         return renderMemoMedia();
       }
-      const go = e.target.closest('[data-go]');
-      if (go) {
-        memoAt = Number(go.dataset.go);
-        renderMemoMedia();
-      }
     });
+
+    // Moving a photo: press a thumbnail and drag it over its neighbours. The photos swap as it
+    // passes them, so the strip always shows the order the post will have. A press that never
+    // moves is a tap, and brings that photo up in the big preview above.
+    let dragAt = null; // index being moved, while it is being moved
+    let pressFrom = null;
+    const MOVED = 6; // px before a press counts as a drag and not a tap
+
+    $('memo-media').addEventListener('pointerdown', (e) => {
+      const thumb = e.target.closest('[data-thumb]');
+      if (!thumb || e.button > 0) return;
+      pressFrom = { x: e.clientX, y: e.clientY, at: Number(thumb.dataset.thumb) };
+      $('memo-thumbs').setPointerCapture(e.pointerId);
+    });
+
+    $('memo-media').addEventListener('pointermove', (e) => {
+      if (!pressFrom) return;
+      if (dragAt === null) {
+        if (Math.hypot(e.clientX - pressFrom.x, e.clientY - pressFrom.y) < MOVED) return;
+        dragAt = pressFrom.at;
+      }
+      e.preventDefault();
+      const strip = $('memo-thumbs');
+      // Near an edge the strip follows along, so a photo can be moved past what is on screen.
+      const box = strip.getBoundingClientRect();
+      if (e.clientX < box.left + 40) strip.scrollLeft -= 12;
+      else if (e.clientX > box.right - 40) strip.scrollLeft += 12;
+
+      const over = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-thumb]');
+      const to = over ? Number(over.dataset.thumb) : null;
+      if (to === null || to === dragAt) return;
+      memoMedia.splice(to, 0, ...memoMedia.splice(dragAt, 1));
+      memoAt = to; // the big preview keeps showing the photo being moved
+      dragAt = to;
+      renderThumbs();
+    });
+
+    const endThumbPress = () => {
+      if (!pressFrom) return;
+      const tapped = dragAt === null ? pressFrom.at : null;
+      pressFrom = null;
+      dragAt = null;
+      if (tapped !== null) memoAt = tapped;
+      renderMemoMedia(); // the caption box below belongs to whichever photo is up now
+    };
+
+    $('memo-media').addEventListener('pointerup', endThumbPress);
+    $('memo-media').addEventListener('pointercancel', endThumbPress);
 
     // Swipe across the preview on a phone, the same gesture the finished card answers to.
     let swipeFrom = null;
