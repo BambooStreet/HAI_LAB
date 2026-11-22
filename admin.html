@@ -215,16 +215,9 @@
     .feed-track::-webkit-scrollbar { display: none; }
     /* Every post gets the same frame, and each photo or video is fitted inside it whole:
        letterboxing on one side beats cropping someone's observation photo. */
-    /* Full card width, with the height set from the first photo's shape (see fitFeed): a phone
-       photo held upright gets a tall frame instead of a sliver between two black bars. The value
-       here is only what shows before that runs, and the cap it is held to.
-       (An aspect-ratio plus max-height shrinks the width to keep the ratio, which left the frame
-       narrower than the card and everything pinned to the left — hence a plain height.) */
+    /* A set height, full card width. (An aspect-ratio plus max-height shrinks the width to keep
+       the ratio, which left the frame narrower than the card and everything pinned to the left.) */
     .feed-track { height: min(58vh, 420px); }
-    .feed-track[style] { max-height: min(82vh, 720px); }
-    /* An upright post: the frame is pulled in to the photo and centred, so it reads as a photo
-       rather than as a small thing in a wide black box. */
-    .feed.narrow { margin-inline: auto; border-radius: 12px; overflow: hidden; }
     /* min-width:0 matters: without it a slide can't shrink below the video's own width,
        so the video spills past the frame and sits off to one side. */
     .feed-item { flex: 0 0 100%; min-width: 0; scroll-snap-align: center; scroll-snap-stop: always; }
@@ -2081,7 +2074,6 @@
           <div class="memo-more" id="memo-more">
             <button class="btn" type="button" id="memo-more-btn">${memoPaging ? '불러오는 중…' : '이전 메모 더 보기'}</button>
           </div>` : '');
-      fitFeeds();
       watchMore();
     }
 
@@ -2092,8 +2084,6 @@
       const el = $('memo-list').querySelector(`[data-memo="${CSS.escape(id)}"]`);
       if (!m || !el) return renderMemos();
       el.outerHTML = memoCard(m);
-      const drawn = $('memo-list').querySelector(`[data-memo="${CSS.escape(id)}"] .feed`);
-      if (drawn) fitFeed(drawn);
       if (focus !== null) {
         $('memo-list').querySelector(`[data-comment-form="${CSS.escape(id)}"][data-parent="${CSS.escape(focus)}"] input`)?.focus();
       }
@@ -2401,46 +2391,6 @@
       if (e.key === 'ArrowLeft') stepLightbox(-1);
       if (e.key === 'ArrowRight') stepLightbox(1);
     });
-
-    // The frame takes the shape of the post's first photo, so an upright phone photo is shown
-    // upright instead of sitting small between two black bars. It grows until it runs out of
-    // card width or hits the height below; a very tall one is held to 1:2 so a panorama taken
-    // on its end can't push the rest of the board off the screen.
-    const MIN_RATIO = 0.5; // upright
-    const MAX_RATIO = 1.91; // wide
-    const feedCap = () => Math.min(innerHeight * 0.82, 720);
-
-    function fitFeed(feed) {
-      const first = feed.querySelector('.feed-item img, .feed-item video');
-      const w = first?.naturalWidth || first?.videoWidth || 0;
-      const h = first?.naturalHeight || first?.videoHeight || 0;
-      const track = feed.querySelector('.feed-track');
-      feed.style.maxWidth = ''; // measure against the full width of the card, not last time's frame
-      const avail = track?.clientWidth ?? 0;
-      if (!w || !h || !avail) return;
-      const ratio = Math.min(Math.max(w / h, MIN_RATIO), MAX_RATIO);
-      const height = Math.min(avail / ratio, feedCap());
-      track.style.height = `${Math.round(height)}px`;
-      // An upright photo needs less width than the card has; pulling the frame in to meet it
-      // leaves the photo the same size with the black bars gone.
-      const frame = Math.round(height * ratio);
-      const narrow = frame < avail;
-      feed.style.maxWidth = narrow ? `${frame}px` : '';
-      feed.classList.toggle('narrow', narrow);
-    }
-
-    const fitFeeds = () => $('memo-list').querySelectorAll('.feed').forEach(fitFeed);
-
-    // Photos arrive one by one, and a cached one is already there by the time the card is drawn.
-    $('memo-list').addEventListener('load', (e) => {
-      const feed = e.target.closest?.('.feed');
-      if (feed) fitFeed(feed);
-    }, true);
-    $('memo-list').addEventListener('loadedmetadata', (e) => {
-      const feed = e.target.closest?.('.feed');
-      if (feed) fitFeed(feed);
-    }, true);
-    addEventListener('resize', fitFeeds);
 
     // Keep the counter, dots and arrows in step with whatever the strip is showing.
     $('memo-list').addEventListener('scroll', (e) => {
