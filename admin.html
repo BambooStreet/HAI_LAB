@@ -193,6 +193,7 @@
 
     /* Memo board */
     .memo-list { display: grid; gap: 12px; }
+    .memo-more { display: flex; justify-content: center; padding: 4px 0 8px; }
     .memo { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
     /* One on each side of the window, staying put while the page scrolls. Each drawing is cut
        off on one side; flipping it puts that cut against the screen edge, so they read as two
@@ -214,9 +215,16 @@
     .feed-track::-webkit-scrollbar { display: none; }
     /* Every post gets the same frame, and each photo or video is fitted inside it whole:
        letterboxing on one side beats cropping someone's observation photo. */
-    /* A set height, full card width. (An aspect-ratio plus max-height shrinks the width to keep
-       the ratio, which left the frame narrower than the card and everything pinned to the left.) */
+    /* Full card width, with the height set from the first photo's shape (see fitFeed): a phone
+       photo held upright gets a tall frame instead of a sliver between two black bars. The value
+       here is only what shows before that runs, and the cap it is held to.
+       (An aspect-ratio plus max-height shrinks the width to keep the ratio, which left the frame
+       narrower than the card and everything pinned to the left — hence a plain height.) */
     .feed-track { height: min(58vh, 420px); }
+    .feed-track[style] { max-height: min(82vh, 720px); }
+    /* An upright post: the frame is pulled in to the photo and centred, so it reads as a photo
+       rather than as a small thing in a wide black box. */
+    .feed.narrow { margin-inline: auto; border-radius: 12px; overflow: hidden; }
     /* min-width:0 matters: without it a slide can't shrink below the video's own width,
        so the video spills past the frame and sits off to one side. */
     .feed-item { flex: 0 0 100%; min-width: 0; scroll-snap-align: center; scroll-snap-stop: always; }
@@ -1583,6 +1591,8 @@
     const memoDialog = $('memo-dialog');
     let memos = [];
     let memoLoaded = false;
+    let memoMore = false;   // another page is waiting on the server
+    let memoPaging = false; // a page is on its way; keeps the scroll from asking twice
     let memoEditing = null; // { id, version } while editing an existing post
     let memoInitial = '';
 
@@ -2063,10 +2073,16 @@
     }
 
     function renderMemos() {
-      $('memo-count').textContent = memoLoaded ? `총 ${memos.length}개` : '';
-      $('memo-list').innerHTML = memos.length
+      $('memo-count').textContent = memoLoaded ? (memoMore ? `${memos.length}개째` : `총 ${memos.length}개`) : '';
+      $('memo-list').innerHTML = (memos.length
         ? memos.map(memoCard).join('')
-        : '<div class="empty">아직 메모가 없어요. 첫 메모를 남겨보세요.</div>';
+        : '<div class="empty">아직 메모가 없어요. 첫 메모를 남겨보세요.</div>')
+        + (memoMore ? `
+          <div class="memo-more" id="memo-more">
+            <button class="btn" type="button" id="memo-more-btn">${memoPaging ? '불러오는 중…' : '이전 메모 더 보기'}</button>
+          </div>` : '');
+      fitFeeds();
+      watchMore();
     }
 
     // Re-render one card only, so a comment being typed in another card isn't wiped.
@@ -2076,6 +2092,8 @@
       const el = $('memo-list').querySelector(`[data-memo="${CSS.escape(id)}"]`);
       if (!m || !el) return renderMemos();
       el.outerHTML = memoCard(m);
+      const drawn = $('memo-list').querySelector(`[data-memo="${CSS.escape(id)}"] .feed`);
+      if (drawn) fitFeed(drawn);
       if (focus !== null) {
         $('memo-list').querySelector(`[data-comment-form="${CSS.escape(id)}"][data-parent="${CSS.escape(focus)}"] input`)?.focus();
       }
@@ -2136,16 +2154,57 @@
       renderMemo(m.id);
     }
 
+    // Posts come a page at a time: the board opens with the newest ones, and the rest are
+    // fetched as it is scrolled. Reading the whole board on every visit is what costs the
+    // database, and most visits never reach the bottom.
+    const MEMO_PAGE = 10;
+
     async function loadMemos() {
       $('memo-count').textContent = '불러오는 중…';
+      memoPaging = true;
       try {
-        ({ memos } = await request('/api/memo', 'GET'));
+        const page = await request(`/api/memo?limit=${MEMO_PAGE}`, 'GET');
+        memos = page.memos;
+        memoMore = page.hasMore;
         memoLoaded = true;
+        memoPaging = false;
         renderMemos();
       } catch (err) {
+        memoPaging = false;
         $('memo-count').textContent = '';
         $('memo-list').innerHTML = `<div class="empty">${esc(err.message)}</div>`;
       }
+    }
+
+    async function loadMoreMemos() {
+      if (!memoMore || memoPaging || !memos.length) return;
+      memoPaging = true;
+      const btn = $('memo-more-btn');
+      if (btn) btn.textContent = '불러오는 중…';
+      try {
+        const page = await request(`/api/memo?limit=${MEMO_PAGE}&before=${memos.at(-1).createdAt}`, 'GET');
+        // A post deleted elsewhere could otherwise come back as a second copy.
+        const have = new Set(memos.map((m) => m.id));
+        memos = [...memos, ...page.memos.filter((m) => !have.has(m.id))];
+        memoMore = page.hasMore;
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        memoPaging = false;
+        renderMemos();
+      }
+    }
+
+    // Fetch the next page as the footer comes into view; the button is there for anyone whose
+    // browser has no observer, and as something to press if a page fails.
+    const moreSeen = typeof IntersectionObserver === 'function'
+      ? new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) loadMoreMemos(); }, { rootMargin: '400px' })
+      : null;
+
+    function watchMore() {
+      const el = $('memo-more');
+      moreSeen?.disconnect();
+      if (el) moreSeen?.observe(el);
     }
 
     function openMemoForm(m) {
@@ -2343,6 +2402,46 @@
       if (e.key === 'ArrowRight') stepLightbox(1);
     });
 
+    // The frame takes the shape of the post's first photo, so an upright phone photo is shown
+    // upright instead of sitting small between two black bars. It grows until it runs out of
+    // card width or hits the height below; a very tall one is held to 1:2 so a panorama taken
+    // on its end can't push the rest of the board off the screen.
+    const MIN_RATIO = 0.5; // upright
+    const MAX_RATIO = 1.91; // wide
+    const feedCap = () => Math.min(innerHeight * 0.82, 720);
+
+    function fitFeed(feed) {
+      const first = feed.querySelector('.feed-item img, .feed-item video');
+      const w = first?.naturalWidth || first?.videoWidth || 0;
+      const h = first?.naturalHeight || first?.videoHeight || 0;
+      const track = feed.querySelector('.feed-track');
+      feed.style.maxWidth = ''; // measure against the full width of the card, not last time's frame
+      const avail = track?.clientWidth ?? 0;
+      if (!w || !h || !avail) return;
+      const ratio = Math.min(Math.max(w / h, MIN_RATIO), MAX_RATIO);
+      const height = Math.min(avail / ratio, feedCap());
+      track.style.height = `${Math.round(height)}px`;
+      // An upright photo needs less width than the card has; pulling the frame in to meet it
+      // leaves the photo the same size with the black bars gone.
+      const frame = Math.round(height * ratio);
+      const narrow = frame < avail;
+      feed.style.maxWidth = narrow ? `${frame}px` : '';
+      feed.classList.toggle('narrow', narrow);
+    }
+
+    const fitFeeds = () => $('memo-list').querySelectorAll('.feed').forEach(fitFeed);
+
+    // Photos arrive one by one, and a cached one is already there by the time the card is drawn.
+    $('memo-list').addEventListener('load', (e) => {
+      const feed = e.target.closest?.('.feed');
+      if (feed) fitFeed(feed);
+    }, true);
+    $('memo-list').addEventListener('loadedmetadata', (e) => {
+      const feed = e.target.closest?.('.feed');
+      if (feed) fitFeed(feed);
+    }, true);
+    addEventListener('resize', fitFeeds);
+
     // Keep the counter, dots and arrows in step with whatever the strip is showing.
     $('memo-list').addEventListener('scroll', (e) => {
       const track = e.target.closest?.('.feed-track');
@@ -2375,6 +2474,7 @@
 
     $('memo-new').addEventListener('click', () => openMemoForm(null));
     $('memo-refresh').addEventListener('click', loadMemos);
+    $('memo-list').addEventListener('click', (e) => { if (e.target.closest('#memo-more-btn')) loadMoreMemos(); });
     $('memo-cancel').addEventListener('click', askToCloseMemoForm);
 
     // ---------- content form ----------

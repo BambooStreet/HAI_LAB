@@ -133,18 +133,30 @@ async function fixBlobUrls() {
   await setJSON(BAD_HOST_KEY, true);
 }
 
-// Each memo comes with its comments (oldest first), like count and whether `client` liked it.
-export async function listMemos(client = '') {
+// A page of posts, newest first, each with its comments (oldest first), like count and whether
+// `client` liked it. `before` is the createdAt of the last post already shown, so the next page
+// picks up from there; only that page's comments and reactions are read.
+export const PAGE_SIZE = 10;
+
+export async function listMemos(client = '', { limit = PAGE_SIZE, before = null } = {}) {
   requireStore();
   await seedDefaults();
   await fixBlobUrls();
+  const upto = Number.isFinite(before) ? before : Infinity;
   let memos, comments, likes, reactions;
   if (!hasDb) {
-    memos = [...memory.values()].map(toMemo).sort((a, b) => b.createdAt - a.createdAt);
-    comments = [...memComments.values()].map(toComment).sort((a, b) => a.createdAt - b.createdAt);
+    memos = [...memory.values()].map(toMemo)
+      .filter((m) => m.createdAt < upto)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, limit + 1);
+    const ids = new Set(memos.slice(0, limit).map((m) => m.id));
+    comments = [...memComments.values()].map(toComment)
+      .filter((c) => ids.has(c.memoId))
+      .sort((a, b) => a.createdAt - b.createdAt);
     const counts = new Map();
     for (const key of memLikes) {
       const [memoId, who] = key.split('\n');
+      if (!ids.has(memoId)) continue;
       const c = counts.get(memoId) ?? { memo_id: memoId, n: 0, liked: false };
       c.n += 1;
       c.liked ||= who === client;
@@ -152,8 +164,10 @@ export async function listMemos(client = '') {
     }
     likes = [...counts.values()];
     const tally = new Map();
+    const shown = new Set(comments.map((c) => c.id));
     for (const key of memReactions) {
       const [commentId, who, emoji] = key.split('\n');
+      if (!shown.has(commentId)) continue;
       const k = `${commentId}\n${emoji}`;
       const r = tally.get(k) ?? { comment_id: commentId, emoji, n: 0, mine: false };
       r.n += 1;
@@ -163,14 +177,29 @@ export async function listMemos(client = '') {
     reactions = [...tally.values()];
   } else {
     const q = await db();
-    [memos, comments, likes, reactions] = await Promise.all([
-      q`SELECT * FROM hai_memos ORDER BY created_at DESC LIMIT 500`.then((rows) => rows.map(toMemo)),
-      q`SELECT * FROM hai_memo_comments ORDER BY created_at`.then((rows) => rows.map(toComment)),
-      q`SELECT memo_id, count(*)::int AS n, bool_or(client = ${client}) AS liked FROM hai_memo_likes GROUP BY memo_id`,
-      q`SELECT comment_id, emoji, count(*)::int AS n, bool_or(client = ${client}) AS mine
-        FROM hai_comment_reactions GROUP BY comment_id, emoji`,
-    ]);
+    // One past the page, to tell whether there is more to come.
+    memos = (await q`SELECT * FROM hai_memos
+      WHERE created_at < ${Number.isFinite(upto) ? upto : Number.MAX_SAFE_INTEGER}
+      ORDER BY created_at DESC LIMIT ${limit + 1}`).map(toMemo);
+    const ids = memos.slice(0, limit).map((m) => m.id);
+    if (!ids.length) {
+      comments = [];
+      likes = [];
+      reactions = [];
+    } else {
+      [comments, likes, reactions] = await Promise.all([
+        q`SELECT * FROM hai_memo_comments WHERE memo_id = ANY(${ids}) ORDER BY created_at`.then((rows) => rows.map(toComment)),
+        q`SELECT memo_id, count(*)::int AS n, bool_or(client = ${client}) AS liked
+          FROM hai_memo_likes WHERE memo_id = ANY(${ids}) GROUP BY memo_id`,
+        q`SELECT comment_id, emoji, count(*)::int AS n, bool_or(client = ${client}) AS mine
+          FROM hai_comment_reactions
+          WHERE comment_id IN (SELECT id FROM hai_memo_comments WHERE memo_id = ANY(${ids}))
+          GROUP BY comment_id, emoji`,
+      ]);
+    }
   }
+  const hasMore = memos.length > limit;
+  memos = memos.slice(0, limit);
   const byMemo = new Map(memos.map((m) => [m.id, { ...m, comments: [], likes: 0, liked: false }]));
   const byComment = new Map(comments.map((c) => [c.id, c]));
   for (const r of reactions) {
@@ -184,7 +213,23 @@ export async function listMemos(client = '') {
     const m = byMemo.get(l.memo_id);
     if (m) Object.assign(m, { likes: Number(l.n), liked: Boolean(l.liked) });
   }
-  return [...byMemo.values()];
+  const page = [...byMemo.values()];
+  return { memos: page, hasMore, nextBefore: page.at(-1)?.createdAt ?? null };
+}
+
+// Every post and comment body, nothing else and no page limit. The storage check reads this to
+// see which files are still shown: a photo in a post older than one page must never look unused.
+export async function allBodies() {
+  requireStore();
+  if (!hasDb) {
+    return [...[...memory.values()].map((r) => r.body), ...[...memComments.values()].map((c) => c.body)];
+  }
+  const q = await db();
+  const [posts, comments] = await Promise.all([
+    q`SELECT body FROM hai_memos`,
+    q`SELECT body FROM hai_memo_comments`,
+  ]);
+  return [...posts, ...comments].map((r) => r.body);
 }
 
 async function memoExists(id) {
@@ -315,8 +360,15 @@ export async function strayRows(remove = false) {
 // stays a decision for a person.
 export async function emptyMemos() {
   requireStore();
-  return (await listMemos()).filter((m) => !m.title.trim() && !m.body.trim())
-    .map((m) => ({ id: m.id, createdAt: m.createdAt }));
+  if (!hasDb) {
+    return [...memory.values()].map(toMemo)
+      .filter((m) => !m.title.trim() && !m.body.trim())
+      .map((m) => ({ id: m.id, createdAt: m.createdAt }));
+  }
+  const q = await db();
+  const rows = await q`SELECT id, created_at FROM hai_memos
+    WHERE btrim(title) = '' AND btrim(body) = '' ORDER BY created_at DESC`;
+  return rows.map((r) => ({ id: r.id, createdAt: Number(r.created_at) }));
 }
 
 export async function deleteComment(id) {

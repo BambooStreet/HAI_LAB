@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { send, isAdmin, readBody } from './_lib/http.js';
 import { getJSON, setJSON } from './_lib/store.js';
-import { listMemos } from './_lib/memos.js';
+import { allBodies } from './_lib/memos.js';
 import {
   hasMedia, putMedia, deleteMedia, listMedia, listUnfinished, keyFromUrl, PREFIX, PART_SIZE,
   startUpload, uploadPart, finishUpload, abortUpload,
@@ -81,22 +81,22 @@ export const keysUsedIn = (text) => new Set([...text.matchAll(KEY_RE)].map((m) =
 
 // What the posts point at, worked out without touching the store.
 async function referencedFiles() {
-  const [memos, papers, content] = await Promise.all([listMemos(), getJSON('hai:papers'), getJSON('hai:content')]);
-  const files = [...keysUsedIn(JSON.stringify([memos, papers, content]))];
+  const [bodies, papers, content] = await Promise.all([allBodies(), getJSON('hai:papers'), getJSON('hai:content')]);
+  const files = [...keysUsedIn(JSON.stringify([bodies, papers, content]))];
   const videos = files.filter((p) => /\.(mp4|webm|mov)$/i.test(p));
   return { referenced: files.length, videos: videos.length, lastSeen: await getJSON(USAGE_KEY) };
 }
 
 async function findOrphans() {
-  const [blobs, unfinished, memos, papers, content] = await Promise.all([
+  const [blobs, unfinished, bodies, papers, content] = await Promise.all([
     listMedia(),
     listUnfinished(),
-    listMemos(),
+    allBodies(),
     getJSON('hai:papers'),
     getJSON('hai:content'),
   ]);
   // Compared by name, not URL, so a link saved under an older host still counts as in use.
-  const used = keysUsedIn(JSON.stringify([memos, papers, content]));
+  const used = keysUsedIn(JSON.stringify([bodies, papers, content]));
   const fresh = Date.now() - KEEP_RECENT_MS;
   const orphans = blobs.filter((b) => !used.has(b.pathname) && new Date(b.uploadedAt).getTime() < fresh);
   const size = (rows) => rows.reduce((n, b) => n + b.size, 0);

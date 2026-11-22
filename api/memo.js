@@ -1,5 +1,5 @@
 // Admin-only memo board. Kept out of /api/data because that endpoint is publicly readable.
-//   GET                          list (with comments and likes)
+//   GET [?limit=&before=]        one page of posts, newest first (with comments and likes)
 //   POST                         create a memo          PUT  update a memo (with its version)
 //   POST ?action=comment         add a comment          POST ?action=like  like / unlike
 //   POST ?action=react           react to a comment with one emoji (toggle)
@@ -8,6 +8,7 @@ import { send, isAdmin, readBody } from './_lib/http.js';
 import {
   listMemos, createMemo, updateMemo, deleteMemo, cleanMemo,
   addComment, deleteComment, cleanComment, setLike, setReaction, CLIENT_RE, strayRows, emptyMemos,
+  PAGE_SIZE,
 } from './_lib/memos.js';
 
 const GONE = '이미 삭제된 글입니다.';
@@ -26,7 +27,11 @@ export default async function handler(req, res) {
       return send(res, 200, { stray, emptyMemos: empty, cleaned: remove });
     }
 
-    if (req.method === 'GET') return send(res, 200, { memos: await listMemos(client) });
+    if (req.method === 'GET') {
+      const limit = Math.min(Math.max(Number(query.get('limit')) || PAGE_SIZE, 1), 50);
+      const before = Number(query.get('before')) || null;
+      return send(res, 200, await listMemos(client, { limit, before }));
+    }
 
     if (req.method === 'POST' && query.get('action') === 'comment') {
       const body = readBody(req);
