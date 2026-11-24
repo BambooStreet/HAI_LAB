@@ -249,6 +249,36 @@
     @media (hover: none) { .feed-zoom { opacity: 1; } }
 
     /* Memo composer dialog */
+    /* Crop before upload. The frame is square because the feed shows a square; what the person
+       puts inside it is what gets stored, so the black bars only appear when they choose to
+       keep the original. */
+    #crop-dialog {
+      margin: auto; /* the global `* { margin: 0 }` reset removes a dialog's own centering */
+      width: min(520px, 94vw); max-height: 92vh; padding: 0; border: 1px solid var(--line);
+      border-radius: 16px; background: var(--surface); color: var(--text); overflow: hidden;
+    }
+    #crop-dialog::backdrop { background: rgba(0, 0, 0, .7); }
+    #crop-dialog[open] { display: flex; flex-direction: column; }
+    /* The buttons must survive a short window, so the middle is what gives way. */
+    .crop-body { padding: 14px 16px; display: grid; gap: 10px; min-height: 0; flex: 1 1 auto; overflow: auto; }
+    .crop-stage {
+      /* Square, and never so tall that the zoom bar and the buttons get pushed out of a short
+         window — a phone on its side has very little height to give. */
+      position: relative; width: min(100%, 44vh); aspect-ratio: 1; margin: 0 auto; overflow: hidden;
+      background: #000; border-radius: 12px; cursor: grab;
+      touch-action: none; /* we pan the photo ourselves; let the browser not scroll the page */
+    }
+    .crop-stage.dragging { cursor: grabbing; }
+    #crop-img { position: absolute; top: 50%; left: 50%; transform-origin: center; user-select: none; -webkit-user-drag: none; }
+    /* Rule-of-thirds lines, so a face or a horizon can be lined up. */
+    .crop-grid { position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); border-radius: 12px; }
+    .crop-grid::before, .crop-grid::after { content: ''; position: absolute; inset: 0; }
+    .crop-grid::before { margin: 0 33.33%; border-left: 1px solid rgba(255,255,255,.28); border-right: 1px solid rgba(255,255,255,.28); }
+    .crop-grid::after { margin: 33.33% 0; border-top: 1px solid rgba(255,255,255,.28); border-bottom: 1px solid rgba(255,255,255,.28); }
+    .crop-zoom { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.85rem; }
+    .crop-zoom input { flex: 1; accent-color: var(--accent); }
+    #crop-dialog .form-actions { flex-wrap: wrap; flex: none; }
+
     #memo-dialog {
       /* the global `* { margin: 0 }` reset removes a dialog's own centering */
       margin: auto;
@@ -499,6 +529,26 @@
             <button class="btn primary" type="submit">저장</button>
           </div>
         </form>
+        </dialog>
+
+        <dialog id="crop-dialog" aria-labelledby="crop-title">
+          <div class="dialog-head">
+            <h3 id="crop-title">사진 자르기</h3>
+            <button class="btn icon" type="button" data-crop="cancel" aria-label="닫기">✕</button>
+          </div>
+          <div class="crop-body">
+            <p class="hint" id="crop-hint"></p>
+            <div class="crop-stage" id="crop-stage">
+              <img id="crop-img" alt="" draggable="false" />
+              <div class="crop-grid"></div>
+            </div>
+            <label class="crop-zoom"><span>확대</span><input type="range" id="crop-zoom" min="100" max="300" value="100" /></label>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="button" data-crop="all">모두 원본으로</button>
+            <button class="btn" type="button" data-crop="skip">원본 그대로</button>
+            <button class="btn primary" type="button" data-crop="ok">자르기</button>
+          </div>
         </dialog>
 
         <div class="toolbar">
@@ -754,6 +804,136 @@
         src.release();
       }
     }
+
+    // ---------- crop before upload ----------
+    // The feed frame is square, so a photo kept whole sits in it with black down the sides.
+    // Choosing the square here means the stored photo is already the picture they want; keeping
+    // the original stays one button away, and that is what every photo did until now.
+    // A GIF is left alone — drawing it to a canvas would keep one frame and lose the animation.
+    const croppable = (f) => f.type.startsWith('image/') && f.type !== 'image/gif';
+
+    const cropDialog = $('crop-dialog');
+    const cropStage = $('crop-stage');
+    const cropImg = $('crop-img');
+    const cropZoom = $('crop-zoom');
+
+    // Where the photo sits under the square frame: zoom (1 = just covers it) and how far it has
+    // been pushed from centre, in screen pixels.
+    let crop = null; // { w, h, zoom, tx, ty, settle }
+
+    function cropLayout() {
+      if (!crop) return;
+      const side = cropStage.clientWidth;
+      const cover = side / Math.min(crop.w, crop.h);
+      const scale = cover * crop.zoom;
+      // Never let an edge come inside the frame: there is no such thing as a blank corner here.
+      const slackX = Math.max(0, (crop.w * scale - side) / 2);
+      const slackY = Math.max(0, (crop.h * scale - side) / 2);
+      crop.tx = Math.max(-slackX, Math.min(slackX, crop.tx));
+      crop.ty = Math.max(-slackY, Math.min(slackY, crop.ty));
+      crop.scale = scale;
+      crop.side = side;
+      cropImg.style.width = `${crop.w}px`;
+      cropImg.style.height = `${crop.h}px`;
+      cropImg.style.transform =
+        `translate(calc(-50% + ${crop.tx}px), calc(-50% + ${crop.ty}px)) scale(${scale})`;
+    }
+
+    // Pan with a finger or the mouse. Pointer events cover both.
+    cropStage.addEventListener('pointerdown', (e) => {
+      if (!crop) return;
+      cropStage.setPointerCapture(e.pointerId);
+      cropStage.classList.add('dragging');
+      crop.from = { x: e.clientX, y: e.clientY, tx: crop.tx, ty: crop.ty };
+    });
+    cropStage.addEventListener('pointermove', (e) => {
+      if (!crop?.from) return;
+      crop.tx = crop.from.tx + (e.clientX - crop.from.x);
+      crop.ty = crop.from.ty + (e.clientY - crop.from.y);
+      cropLayout();
+    });
+    for (const end of ['pointerup', 'pointercancel']) {
+      cropStage.addEventListener(end, () => {
+        if (crop) crop.from = null;
+        cropStage.classList.remove('dragging');
+      });
+    }
+    cropZoom.addEventListener('input', () => {
+      if (!crop) return;
+      crop.zoom = Number(cropZoom.value) / 100;
+      cropLayout();
+    });
+    addEventListener('resize', cropLayout);
+
+    // Cuts out whatever the frame is showing, at the photo's own resolution (capped like the
+    // rest of our uploads). PNG, because the upload step encodes once more after this.
+    async function cutOut(file) {
+      const side = crop.side / crop.scale;              // how much of the photo the frame covers
+      const sx = crop.w / 2 - crop.tx / crop.scale - side / 2;
+      const sy = crop.h / 2 - crop.ty / crop.scale - side / 2;
+      const out = Math.min(1600, Math.round(side));
+      const canvas = document.createElement('canvas');
+      canvas.width = out; canvas.height = out;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(cropImg, sx, sy, side, side, 0, 0, out, out);
+      const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+      return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
+    }
+
+    // Walks the picked photos one at a time. Comes back with what to upload: a square for the
+    // ones that were cropped, the untouched file for the ones that were not. An empty list
+    // means the person backed out of the whole pick.
+    async function cropSquares(files) {
+      const out = [];
+      let keepRest = false;
+      for (const [i, file] of files.entries()) {
+        if (keepRest || !croppable(file)) { out.push(file); continue; }
+
+        const url = URL.createObjectURL(file);
+        let loaded = true;
+        try {
+          cropImg.src = url;
+          await cropImg.decode();
+        } catch {
+          loaded = false; // let the upload step explain what is wrong with it
+        }
+        if (!loaded) { URL.revokeObjectURL(url); out.push(file); continue; }
+
+        const left = files.length - i;
+        $('crop-hint').textContent = files.length > 1
+          ? `${i + 1} / ${files.length} — 끌어서 옮기고, 아래 막대로 확대해 네모 안을 정하세요.`
+          : '끌어서 옮기고, 아래 막대로 확대해 네모 안을 정하세요.';
+        cropDialog.querySelector('[data-crop="all"]').hidden = left < 2;
+        crop = { w: cropImg.naturalWidth, h: cropImg.naturalHeight, zoom: 1, tx: 0, ty: 0, from: null };
+        cropZoom.value = '100';
+        if (!cropDialog.open) cropDialog.showModal();
+        cropLayout();
+
+        const choice = await new Promise((resolve) => {
+          crop.settle = resolve;
+        });
+
+        if (choice === 'ok') out.push(await cutOut(file));
+        else if (choice === 'skip') out.push(file);
+        else if (choice === 'all') { out.push(file); keepRest = true; }
+        else { URL.revokeObjectURL(url); crop = null; cropDialog.close(); return []; } // 취소
+
+        URL.revokeObjectURL(url);
+      }
+      crop = null;
+      if (cropDialog.open) cropDialog.close();
+      return out;
+    }
+
+    cropDialog.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-crop]')?.dataset.crop;
+      if (act) crop?.settle?.(act);
+    });
+    cropDialog.addEventListener('cancel', (e) => { // Esc
+      e.preventDefault();
+      crop?.settle?.('cancel');
+    });
 
     async function uploadImage(file) {
       if (!file.type.startsWith('image/')) throw new Error('이미지 파일만 올릴 수 있어요.');
@@ -1711,7 +1891,9 @@
     async function addMemoFiles(list) {
       const picked = mediaFiles(list);
       if (!picked.length) return;
-      const files = await heldInMemoryAll(picked);
+      const held = await heldInMemoryAll(picked);
+      if (!held.length) return;
+      const files = await cropSquares(held);
       if (!files.length) return;
 
       // Every pick is added at once, then uploaded one by one in the background. Adding them as
