@@ -932,9 +932,13 @@
     // Walks the picked photos one at a time. Comes back with what to upload: a square for the
     // ones that were cropped, the untouched file for the ones that were not. An empty list
     // means the person backed out of the whole pick.
-    async function cropSquares(files) {
+    // skipLabel: what the button that leaves the photo uncropped should say. Picking new files
+    // it means "올리기 전에 자르지 않는다"; re-cutting a photo already in the post it means
+    // "지금 올라가 있는 그대로 둔다", which is not the same sentence.
+    async function cropSquares(files, { skipLabel = '원본 올리기' } = {}) {
       const out = [];
       let keepRest = false;
+      cropDialog.querySelector('[data-crop="skip"]').textContent = skipLabel;
       for (const [i, file] of files.entries()) {
         if (keepRest || !croppable(file)) { out.push(file); continue; }
 
@@ -1906,6 +1910,8 @@
               <p class="cm-tip">드래그해서 순서를 바꿀 수 있습니다</p>` : ''}
             <div class="cm-bar">
               <button class="btn" type="button" data-add-media>＋ 사진 추가</button>
+              ${item.url && !item.video && !item.uploading && !/\.gif$/i.test(item.url)
+                ? `<button class="btn" type="button" data-edit-media="${memoAt}">✂ 수정</button>` : ''}
               <button class="btn danger" type="button" data-drop-media="${memoAt}">✕ 이 사진 빼기</button>
             </div>
             <label class="slide-caption"><span>이 사진 설명 (선택)</span>
@@ -1983,6 +1989,54 @@
       }
     }
 
+    // Cutting a photo that is already up there. The stored file is fetched back, put through the
+    // same square frame, and uploaded as a new file — the old address stays in every post that
+    // still shows it, so nothing anyone else is looking at changes under them.
+    async function recropMedia(i) {
+      const item = memoMedia[i];
+      if (!item || item.video || item.uploading || !item.url) return;
+
+      let file;
+      try {
+        const res = await fetch(item.url, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`사진을 불러오지 못했어요 (${res.status}).`);
+        const blob = await res.blob();
+        const name = decodeURIComponent(item.url.split('/').pop() || 'photo');
+        file = new File([blob], name, { type: blob.type || 'image/webp' });
+      } catch (err) {
+        return toast(err.message || '사진을 불러오지 못했어요.', true);
+      }
+
+      const [cut] = await cropSquares([file], { skipLabel: '그대로 두기' });
+      if (!cut || cut === file) return; // 취소했거나 그대로 두기로 했다
+
+      const was = item.url;
+      const mine = memoSession;
+      item.uploading = true;
+      item.progress = 0;
+      memoUploads += 1;
+      setMemoBusy();
+      renderMemoMedia();
+      try {
+        const url = await uploadImage(cut);
+        if (mine !== memoSession) return discard(url); // 작성창이 이미 닫혔다
+        item.url = url;
+        // Only a file no saved post is showing can go now. One that a post still uses is left
+        // alone here and swept up by freeRemovedMedia when this memo is saved — otherwise
+        // closing the composer without saving would leave that post with a missing photo.
+        if (![...memos, ...papers].some((post) => mediaUrls(post.body).includes(was))) discard(was);
+      } catch (err) {
+        toast(err.message, true);
+      } finally {
+        // The count comes down whatever happened: it is never reset when the composer closes,
+        // so a missed decrement would leave 저장 greyed out for good.
+        item.uploading = false;
+        memoUploads -= 1;
+        setMemoBusy();
+        renderMemoMedia();
+      }
+    }
+
     // Wildcards only. A phone shown a list with exact types (video/mp4 and friends) opens its
     // general file browser instead of the gallery, and what comes back from there is often a
     // cloud-only item whose bytes never arrive. image/* and video/* get the gallery.
@@ -1996,6 +2050,9 @@
 
     $('memo-media').addEventListener('click', (e) => {
       if (e.target.closest('[data-add-media]')) return pickMemoFiles();
+
+      const edit = e.target.closest('[data-edit-media]');
+      if (edit) return recropMedia(Number(edit.dataset.editMedia));
 
       const drop = e.target.closest('[data-drop-media]');
       if (drop) {
