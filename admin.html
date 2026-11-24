@@ -262,11 +262,19 @@
     /* The buttons must survive a short window, so the middle is what gives way. */
     .crop-body { padding: 14px 16px; display: grid; gap: 10px; min-height: 0; flex: 1 1 auto; overflow: auto; }
     .crop-stage {
-      /* Square, and never so tall that the zoom bar and the buttons get pushed out of a short
-         window — a phone on its side has very little height to give. */
-      position: relative; width: min(100%, 44vh); aspect-ratio: 1; margin: 0 auto; overflow: hidden;
+      /* The frame's shape, as width/height. Whatever it is, the height is held to 44vh so the
+         shape row and the buttons are not pushed out of a short window — a phone on its side
+         has very little height to give — and the width never leaves the dialog. */
+      --ar: 1;
+      position: relative; width: min(100%, calc(44vh * var(--ar))); aspect-ratio: var(--ar);
+      margin: 0 auto; overflow: hidden;
       background: #000; border-radius: 12px; cursor: grab;
       touch-action: none; /* we pan the photo ourselves; let the browser not scroll the page */
+    }
+    .crop-shapes { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    .crop-shapes .btn { padding: 4px 10px; font-size: 0.78rem; border-radius: 999px; }
+    .crop-shapes .btn[aria-pressed="true"] {
+      background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700;
     }
     .crop-stage.dragging { cursor: grabbing; }
     #crop-img { position: absolute; top: 50%; left: 50%; transform-origin: center; user-select: none; -webkit-user-drag: none; }
@@ -543,6 +551,15 @@
               <img id="crop-img" alt="" draggable="false" />
               <div class="crop-grid"></div>
             </div>
+            <!-- The feed itself is square: a photo cut to anything else sits in it on black,
+                 the same way an uncropped one does. -->
+            <div class="crop-shapes" id="crop-shapes" role="group" aria-label="자를 모양">
+              <button class="btn" type="button" data-ar="1:1" aria-pressed="true">정사각형 1:1</button>
+              <button class="btn" type="button" data-ar="4:5" aria-pressed="false">세로 4:5</button>
+              <button class="btn" type="button" data-ar="3:4" aria-pressed="false">세로 3:4</button>
+              <button class="btn" type="button" data-ar="4:3" aria-pressed="false">가로 4:3</button>
+              <button class="btn" type="button" data-ar="16:9" aria-pressed="false">가로 16:9</button>
+            </div>
           </div>
           <div class="form-actions">
             <button class="btn" type="button" data-crop="all">모두 원본으로</button>
@@ -818,28 +835,52 @@
     const cropDialog = $('crop-dialog');
     const cropStage = $('crop-stage');
     const cropImg = $('crop-img');
+    const cropShapes = $('crop-shapes');
 
     // Where the photo sits under the square frame: zoom (1 = just covers it) and how far it has
     // been pushed from centre, in screen pixels.
     let crop = null; // { w, h, zoom, tx, ty, settle }
 
+    // The smallest scale at which the photo still fills the frame, whatever shape it is in.
+    const coverScale = () =>
+      Math.max(cropStage.clientWidth / crop.w, cropStage.clientHeight / crop.h);
+
     function cropLayout() {
       if (!crop) return;
-      const side = cropStage.clientWidth;
-      const cover = side / Math.min(crop.w, crop.h);
-      const scale = cover * crop.zoom;
+      const fw = cropStage.clientWidth;
+      const fh = cropStage.clientHeight;
+      const scale = coverScale() * crop.zoom;
       // Never let an edge come inside the frame: there is no such thing as a blank corner here.
-      const slackX = Math.max(0, (crop.w * scale - side) / 2);
-      const slackY = Math.max(0, (crop.h * scale - side) / 2);
+      const slackX = Math.max(0, (crop.w * scale - fw) / 2);
+      const slackY = Math.max(0, (crop.h * scale - fh) / 2);
       crop.tx = Math.max(-slackX, Math.min(slackX, crop.tx));
       crop.ty = Math.max(-slackY, Math.min(slackY, crop.ty));
       crop.scale = scale;
-      crop.side = side;
+      crop.fw = fw;
+      crop.fh = fh;
       cropImg.style.width = `${crop.w}px`;
       cropImg.style.height = `${crop.h}px`;
       cropImg.style.transform =
         `translate(calc(-50% + ${crop.tx}px), calc(-50% + ${crop.ty}px)) scale(${scale})`;
     }
+
+    // The shape of the frame, kept between photos: someone cutting a batch to 4:5 should not
+    // have to say so five times. Written as w:h so the markup reads as the person sees it.
+    let cropAr = '1:1';
+    function setCropShape(ar) {
+      const [w, h] = String(ar).split(':').map(Number);
+      if (!(w > 0 && h > 0)) return;
+      cropAr = ar;
+      cropStage.style.setProperty('--ar', String(w / h));
+      for (const b of cropShapes.querySelectorAll('[data-ar]')) {
+        b.setAttribute('aria-pressed', String(b.dataset.ar === ar));
+      }
+      cropLayout(); // the frame just changed shape; the photo has to cover the new one
+    }
+    cropShapes.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-ar]');
+      if (b) setCropShape(b.dataset.ar);
+    });
 
     const MAX_ZOOM = 4;
 
@@ -848,8 +889,7 @@
     function zoomAbout(nextZoom, px, py) {
       const was = crop.scale;
       crop.zoom = Math.max(1, Math.min(MAX_ZOOM, nextZoom));
-      const cover = cropStage.clientWidth / Math.min(crop.w, crop.h);
-      const now = cover * crop.zoom;
+      const now = coverScale() * crop.zoom;
       crop.tx = px - (px - crop.tx) * (now / was);
       crop.ty = py - (py - crop.ty) * (now / was);
       cropLayout();
@@ -916,15 +956,19 @@
     // Cuts out whatever the frame is showing, at the photo's own resolution (capped like the
     // rest of our uploads). PNG, because the upload step encodes once more after this.
     async function cutOut(file) {
-      const side = crop.side / crop.scale;              // how much of the photo the frame covers
-      const sx = crop.w / 2 - crop.tx / crop.scale - side / 2;
-      const sy = crop.h / 2 - crop.ty / crop.scale - side / 2;
-      const out = Math.min(1600, Math.round(side));
+      const sw = crop.fw / crop.scale;                  // how much of the photo the frame covers
+      const sh = crop.fh / crop.scale;
+      const sx = crop.w / 2 - crop.tx / crop.scale - sw / 2;
+      const sy = crop.h / 2 - crop.ty / crop.scale - sh / 2;
+      // Capped on the long side, so a wide cut is not stored larger than a square one.
+      const k = Math.min(1, 1600 / Math.max(sw, sh));
+      const ow = Math.max(1, Math.round(sw * k));
+      const oh = Math.max(1, Math.round(sh * k));
       const canvas = document.createElement('canvas');
-      canvas.width = out; canvas.height = out;
+      canvas.width = ow; canvas.height = oh;
       const ctx = canvas.getContext('2d');
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(cropImg, sx, sy, side, side, 0, 0, out, out);
+      ctx.drawImage(cropImg, sx, sy, sw, sh, 0, 0, ow, oh);
       const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
       return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.png', { type: 'image/png' });
     }
@@ -954,12 +998,12 @@
 
         const left = files.length - i;
         $('crop-hint').textContent = files.length > 1
-          ? `${i + 1} / ${files.length} — 끌어서 옮기고, 두 손가락(또는 휠)으로 확대해 네모 안을 정하세요.`
-          : '끌어서 옮기고, 두 손가락(또는 휠)으로 확대해 네모 안을 정하세요.';
+          ? `${i + 1} / ${files.length} — 끌어서 옮기고, 두 손가락(또는 휠)으로 확대해 틀 안을 정하세요.`
+          : '끌어서 옮기고, 두 손가락(또는 휠)으로 확대해 틀 안을 정하세요.';
         cropDialog.querySelector('[data-crop="all"]').hidden = left < 2;
         crop = { w: cropImg.naturalWidth, h: cropImg.naturalHeight, zoom: 1, tx: 0, ty: 0, from: null };
         if (!cropDialog.open) cropDialog.showModal();
-        cropLayout();
+        setCropShape(cropAr);
 
         const choice = await new Promise((resolve) => {
           crop.settle = resolve;
