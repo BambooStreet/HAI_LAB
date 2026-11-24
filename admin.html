@@ -275,8 +275,6 @@
     .crop-grid::before, .crop-grid::after { content: ''; position: absolute; inset: 0; }
     .crop-grid::before { margin: 0 33.33%; border-left: 1px solid rgba(255,255,255,.28); border-right: 1px solid rgba(255,255,255,.28); }
     .crop-grid::after { margin: 33.33% 0; border-top: 1px solid rgba(255,255,255,.28); border-bottom: 1px solid rgba(255,255,255,.28); }
-    .crop-zoom { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.85rem; }
-    .crop-zoom input { flex: 1; accent-color: var(--accent); }
     #crop-dialog .form-actions { flex-wrap: wrap; flex: none; }
 
     #memo-dialog {
@@ -542,7 +540,6 @@
               <img id="crop-img" alt="" draggable="false" />
               <div class="crop-grid"></div>
             </div>
-            <label class="crop-zoom"><span>확대</span><input type="range" id="crop-zoom" min="100" max="300" value="100" /></label>
           </div>
           <div class="form-actions">
             <button class="btn" type="button" data-crop="all">모두 원본으로</button>
@@ -815,7 +812,6 @@
     const cropDialog = $('crop-dialog');
     const cropStage = $('crop-stage');
     const cropImg = $('crop-img');
-    const cropZoom = $('crop-zoom');
 
     // Where the photo sits under the square frame: zoom (1 = just covers it) and how far it has
     // been pushed from centre, in screen pixels.
@@ -839,30 +835,76 @@
         `translate(calc(-50% + ${crop.tx}px), calc(-50% + ${crop.ty}px)) scale(${scale})`;
     }
 
-    // Pan with a finger or the mouse. Pointer events cover both.
+    const MAX_ZOOM = 4;
+
+    // Zooms about a point rather than the middle, so whatever is under the fingers or the
+    // cursor stays under them. Without this, zooming in on a corner walks the subject away.
+    function zoomAbout(nextZoom, px, py) {
+      const was = crop.scale;
+      crop.zoom = Math.max(1, Math.min(MAX_ZOOM, nextZoom));
+      const cover = cropStage.clientWidth / Math.min(crop.w, crop.h);
+      const now = cover * crop.zoom;
+      crop.tx = px - (px - crop.tx) * (now / was);
+      crop.ty = py - (py - crop.ty) * (now / was);
+      cropLayout();
+    }
+
+    // Where a touch or the cursor is, measured from the middle of the frame.
+    const fromCentre = (e) => {
+      const b = cropStage.getBoundingClientRect();
+      return { x: e.clientX - (b.left + b.width / 2), y: e.clientY - (b.top + b.height / 2) };
+    };
+
+    // One finger moves the photo, two spread it. A mouse drags and turns its wheel. Pointer
+    // events carry both, so there is one path for all of it.
+    const touching = new Map();
+    const spread = () => {
+      const [a, b] = [...touching.values()];
+      return { gap: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    };
+
     cropStage.addEventListener('pointerdown', (e) => {
       if (!crop) return;
       cropStage.setPointerCapture(e.pointerId);
       cropStage.classList.add('dragging');
-      crop.from = { x: e.clientX, y: e.clientY, tx: crop.tx, ty: crop.ty };
+      touching.set(e.pointerId, fromCentre(e));
+      crop.pinch = touching.size >= 2 ? { ...spread(), zoom: crop.zoom } : null;
+      crop.from = touching.size === 1 ? { ...fromCentre(e), tx: crop.tx, ty: crop.ty } : null;
     });
+
     cropStage.addEventListener('pointermove', (e) => {
-      if (!crop?.from) return;
-      crop.tx = crop.from.tx + (e.clientX - crop.from.x);
-      crop.ty = crop.from.ty + (e.clientY - crop.from.y);
-      cropLayout();
+      if (!crop || !touching.has(e.pointerId)) return;
+      touching.set(e.pointerId, fromCentre(e));
+      if (crop.pinch && touching.size >= 2) {
+        const now = spread();
+        zoomAbout(crop.pinch.zoom * (now.gap / crop.pinch.gap), now.x, now.y);
+      } else if (crop.from) {
+        const at = fromCentre(e);
+        crop.tx = crop.from.tx + (at.x - crop.from.x);
+        crop.ty = crop.from.ty + (at.y - crop.from.y);
+        cropLayout();
+      }
     });
+
     for (const end of ['pointerup', 'pointercancel']) {
-      cropStage.addEventListener(end, () => {
-        if (crop) crop.from = null;
-        cropStage.classList.remove('dragging');
+      cropStage.addEventListener(end, (e) => {
+        touching.delete(e.pointerId);
+        if (!crop) return;
+        crop.pinch = null;
+        // Lifting one of two fingers hands the photo back to the one still down, without a jump.
+        crop.from = touching.size === 1
+          ? { ...[...touching.values()][0], tx: crop.tx, ty: crop.ty }
+          : null;
+        if (!touching.size) cropStage.classList.remove('dragging');
       });
     }
-    cropZoom.addEventListener('input', () => {
+
+    cropStage.addEventListener('wheel', (e) => {
       if (!crop) return;
-      crop.zoom = Number(cropZoom.value) / 100;
-      cropLayout();
-    });
+      e.preventDefault();
+      const at = fromCentre(e);
+      zoomAbout(crop.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), at.x, at.y);
+    }, { passive: false });
     addEventListener('resize', cropLayout);
 
     // Cuts out whatever the frame is showing, at the photo's own resolution (capped like the
@@ -902,11 +944,10 @@
 
         const left = files.length - i;
         $('crop-hint').textContent = files.length > 1
-          ? `${i + 1} / ${files.length} — 끌어서 옮기고, 아래 막대로 확대해 네모 안을 정하세요.`
-          : '끌어서 옮기고, 아래 막대로 확대해 네모 안을 정하세요.';
+          ? `${i + 1} / ${files.length} — 끌어서 옮기고, 두 손가락(또는 휠)으로 확대해 네모 안을 정하세요.`
+          : '끌어서 옮기고, 두 손가락(또는 휠)으로 확대해 네모 안을 정하세요.';
         cropDialog.querySelector('[data-crop="all"]').hidden = left < 2;
         crop = { w: cropImg.naturalWidth, h: cropImg.naturalHeight, zoom: 1, tx: 0, ty: 0, from: null };
-        cropZoom.value = '100';
         if (!cropDialog.open) cropDialog.showModal();
         cropLayout();
 
