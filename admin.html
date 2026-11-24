@@ -275,7 +275,10 @@
     .crop-grid::before, .crop-grid::after { content: ''; position: absolute; inset: 0; }
     .crop-grid::before { margin: 0 33.33%; border-left: 1px solid rgba(255,255,255,.28); border-right: 1px solid rgba(255,255,255,.28); }
     .crop-grid::after { margin: 33.33% 0; border-top: 1px solid rgba(255,255,255,.28); border-bottom: 1px solid rgba(255,255,255,.28); }
-    #crop-dialog .form-actions { flex-wrap: wrap; flex: none; }
+    /* Smaller than the page's buttons: this row sits right under the photo, and full-size
+       buttons there pull the eye away from the thing being decided. */
+    #crop-dialog .form-actions { flex-wrap: wrap; flex: none; padding: 0 16px 14px; }
+    #crop-dialog .form-actions .btn { padding: 5px 12px; font-size: 0.82rem; border-radius: 8px; }
 
     #memo-dialog {
       /* the global `* { margin: 0 }` reset removes a dialog's own centering */
@@ -543,8 +546,11 @@
           </div>
           <div class="form-actions">
             <button class="btn" type="button" data-crop="all">모두 원본으로</button>
-            <button class="btn" type="button" data-crop="skip">원본 그대로</button>
-            <button class="btn primary" type="button" data-crop="ok">자르기</button>
+            <button class="btn" type="button" data-crop="skip">원본 올리기</button>
+            <!-- Leaving off here throws the whole batch away, so it sits apart from the two that
+                 keep the photo: one stores the square, the other the picture as it came. -->
+            <button class="btn" type="button" data-crop="cancel">취소</button>
+            <button class="btn primary" type="button" data-crop="ok">확인</button>
           </div>
         </dialog>
 
